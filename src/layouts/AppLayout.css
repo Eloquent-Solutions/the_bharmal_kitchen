@@ -1,0 +1,50 @@
+/* ============================================================
+   App Layout Styles
+   ============================================================ */
+
+.app-layout {
+  min-height: 100vh;
+}
+
+.app-main {
+  margin-left: var(--sidebar-width);
+  margin-top: var(--topbar-height);
+  min-height: calc(100vh - var(--topbar-height));
+  transition: margin-left var(--transition-base);
+}
+
+.sidebar-is-collapsed .app-main {
+  margin-left: var(--sidebar-collapsed-width);
+}
+
+/* The topbar also needs to shift */
+.sidebar-is-collapsed .topbar {
+  left: var(--sidebar-collapsed-width);
+}
+
+.app-content {
+  padding: var(--space-6);
+  max-width: var(--content-max-width);
+  margin: 0 auto;
+  animation: fadeIn var(--transition-base) ease-out;
+}
+
+@media (max-width: 768px) {
+  .app-main {
+    margin-left: 0;
+  }
+
+  .sidebar-is-collapsed .app-main {
+    margin-left: 0;
+  }
+
+  .app-content {
+    padding: var(--space-4);
+  }
+}
+
+@media (max-width: 480px) {
+  .app-content {
+    padding: var(--space-3);
+  }
+}

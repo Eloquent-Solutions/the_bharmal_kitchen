@@ -1,0 +1,91 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function hasRole(roles) {
+      return signedIn()
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.status == 'active'
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in roles;
+    }
+
+    function isAdmin() {
+      return hasRole(['Owner', 'Admin']);
+    }
+
+    function isStaff() {
+      return hasRole([
+        'Owner', 'Admin', 'Manager', 'Cashier', 'Chef', 'Kitchen Staff',
+        'Waiter', 'Captain', 'Inventory Manager', 'Accountant', 'Staff'
+      ]);
+    }
+
+    // A first-time sign-in can create only its own Customer profile. Owners
+    // assign staff roles through the admin UI or Firebase Console.
+    match /users/{userId} {
+      allow get: if isAdmin() || (signedIn() && request.auth.uid == userId);
+      allow list: if isAdmin();
+      allow create: if isAdmin() || (
+        signedIn()
+        && request.auth.uid == userId
+        && request.resource.data.uid == userId
+        && request.resource.data.email == request.auth.token.email
+        && request.resource.data.role == 'Customer'
+        && request.resource.data.status == 'active'
+        && request.resource.data.allowedTabs == []
+      );
+      allow update: if isAdmin() || (
+        signedIn()
+        && request.auth.uid == userId
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['lastLogin'])
+      );
+      allow delete: if isAdmin();
+    }
+
+    match /{collection}/{document} {
+      // Owner and Admin can manage top-level operational documents.
+      allow read, write: if isAdmin();
+
+      allow read: if isStaff() && collection in [
+        'menu_items', 'categories', 'combos', 'modifiers', 'promotions',
+        'orders', 'kots', 'tables', 'branches', 'settings',
+        'printers', 'print_routing', 'print_queue'
+      ];
+      allow write: if hasRole(['Manager', 'Chef']) && collection in [
+        'menu_items', 'categories', 'combos', 'modifiers'
+      ];
+      allow write: if hasRole(['Manager']) && collection in ['promotions', 'branches', 'settings', 'printers', 'print_routing'];
+      allow write: if hasRole(['Manager', 'Cashier', 'Chef', 'Kitchen Staff', 'Waiter', 'Captain'])
+        && collection in ['orders', 'kots', 'tables'];
+      allow write: if hasRole(['Manager', 'Cashier', 'Chef']) && collection == 'print_queue';
+
+      allow read: if hasRole(['Manager', 'Chef', 'Kitchen Staff', 'Inventory Manager', 'Accountant'])
+        && collection in ['raw_materials', 'recipes', 'utensils', 'stock_movements', 'wastage'];
+      allow write: if hasRole(['Manager', 'Chef', 'Inventory Manager'])
+        && collection in ['raw_materials', 'recipes', 'utensils', 'stock_movements', 'wastage'];
+      allow create: if hasRole(['Kitchen Staff']) && collection == 'wastage';
+
+      allow read: if hasRole(['Manager', 'Inventory Manager', 'Accountant'])
+        && collection in ['suppliers', 'supply_categories', 'kitchen_stations', 'purchase_bills', 'purchase_orders'];
+      allow write: if hasRole(['Manager', 'Inventory Manager'])
+        && collection in ['suppliers', 'supply_categories', 'kitchen_stations', 'purchase_bills', 'purchase_orders'];
+
+      allow read, write: if hasRole(['Manager', 'Cashier', 'Waiter', 'Captain'])
+        && collection in ['customers', 'reservations', 'waitlist', 'inbox', 'inbox_messages'];
+
+      allow read: if hasRole(['Manager', 'Accountant'])
+        && collection in ['staff', 'leaves', 'advances', 'attendance', 'cash_transactions',
+          'cash_drawer', 'expenses', 'day_close', 'shifts', 'audit_logs'];
+      allow write: if hasRole(['Manager'])
+        && collection in ['staff', 'leaves', 'advances', 'attendance', 'cash_transactions',
+          'cash_drawer', 'expenses', 'day_close', 'shifts'];
+      allow read, write: if hasRole(['Cashier'])
+        && collection in ['cash_transactions', 'cash_drawer', 'day_close', 'shifts'];
+      allow create: if isStaff() && collection == 'audit_logs';
+    }
+  }
+}
