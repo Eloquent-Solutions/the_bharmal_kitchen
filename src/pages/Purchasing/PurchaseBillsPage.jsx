@@ -333,6 +333,11 @@ export default function PurchaseBillsPage() {
       b.invoiceNumber.toLowerCase().includes(search.toLowerCase()) ||
       b.id.toLowerCase().includes(search.toLowerCase())
   );
+  const purchaseBillUnavailableReason = suppliers.length === 0
+    ? 'Add a supplier first'
+    : rawMaterials.length === 0 && utensils.length === 0
+      ? 'Add a raw material or utensil first'
+      : undefined;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-5)' }}>
@@ -344,7 +349,7 @@ export default function PurchaseBillsPage() {
             Adding supplier bills automatically increments Raw Materials and Utensils stock in real time.
           </p>
         </div>
-        <button className="btn btn-primary" onClick={handleOpenAdd} disabled={suppliers.length === 0 || (rawMaterials.length === 0 && utensils.length === 0)} title={suppliers.length === 0 ? 'Add a supplier first' : undefined}>
+        <button className="btn btn-primary" onClick={handleOpenAdd} disabled={Boolean(purchaseBillUnavailableReason)} title={purchaseBillUnavailableReason}>
           <Plus size={16} /> Record Purchase Bill
         </button>
       </div>
