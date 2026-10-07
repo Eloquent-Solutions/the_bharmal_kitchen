@@ -19,6 +19,9 @@ import {
   onSnapshot,
 } from 'firebase/firestore';
 import { db, isDemoMode } from '../firebase/config';
+import { formatRecordId } from '../utils/recordIds';
+
+const inventoryId = (prefix) => `${prefix}-${crypto.randomUUID()}`;
 
 /**
  * Auto-synchronize Firestore remote collections into local reactive stores on load
@@ -934,10 +937,11 @@ export function getRecipes() {
 
 export function saveRecipe(recipe) {
   const list = getRecipes();
-  const calculatedCost = (recipe.ingredients || []).reduce(
+  const batchCost = (recipe.ingredients || []).reduce(
     (sum, ing) => sum + (Number(ing.cost) || 0),
     0
   );
+  const calculatedCost = batchCost / (Number(recipe.yieldServings) || 1);
 
   const payload = {
     ...recipe,
@@ -957,7 +961,7 @@ export function saveRecipe(recipe) {
       return r;
     });
   } else {
-    const id = recipe.id || `RCP-${String(list.length + 1).padStart(2, '0')}`;
+    const id = recipe.id || inventoryId('RCP');
     savedRecipe = { ...payload, id };
     updated = [savedRecipe, ...list];
   }
@@ -973,7 +977,7 @@ export function saveRecipe(recipe) {
   if (!existingItem) {
     // Automatically create menu item with uncategorized state
     const newItem = {
-      id: savedRecipe.dishId || `ITEM-${String(menuItems.length + 1).padStart(2, '0')}`,
+      id: savedRecipe.dishId || inventoryId('ITEM'),
       name: savedRecipe.dishName,
       category: '', // No category yet!
       categoryId: null,
@@ -1026,12 +1030,12 @@ export function saveRawMaterial(material) {
       return m;
     });
   } else {
-    const id = material.id || `RM-${100 + list.length + 1}`;
+    const id = material.id || inventoryId('RM');
     savedMat = {
       ...material,
       id,
       currentStock: Number(material.currentStock) || 0,
-      reorderLevel: Number(material.reorderLevel) || 5,
+      reorderLevel: Number(material.reorderLevel ?? 5),
       unitCost: Number(material.unitCost) || 0,
     };
     updated = [...list, savedMat];
@@ -1043,22 +1047,39 @@ export function saveRawMaterial(material) {
 
 export function deleteRawMaterial(id) {
   const list = getRawMaterials();
+  const target = list.find((material) => material.id === id);
+  if (!target) return list;
+  if (Number(target.currentStock) > 0) throw new Error('Reconcile this material to zero stock before deleting it.');
+  if (getRecipes().some((recipe) => recipe.ingredients?.some((ingredient) => ingredient.id === id || ingredient.name?.toLowerCase() === target.name.toLowerCase()))) {
+    throw new Error('Remove this material from linked recipes before deleting it.');
+  }
   const updated = list.filter((m) => m.id !== id);
   setStored('tbk_raw_materials', updated);
   deleteDocFromFirestore('raw_materials', id);
   return updated;
 }
 
-export function adjustRawMaterialStock(id, qty, type = 'add', reason = 'Stock Movement') {
+export function adjustRawMaterialStock(id, qty, type = 'add', reason = 'Stock Movement', inwardUnitCost = null) {
   const list = getRawMaterials();
-  const numQty = Number(qty) || 0;
-  if (numQty <= 0) return list;
+  const numQty = Number(qty);
+  if (!Number.isFinite(numQty) || numQty <= 0) throw new Error('Enter a quantity greater than zero.');
+  if (Math.abs(numQty - Math.round(numQty * 1000) / 1000) > 0.0000001) throw new Error('Use at most three decimal places for stock quantity.');
+  if (inwardUnitCost != null && (!Number.isFinite(Number(inwardUnitCost)) || Number(inwardUnitCost) < 0)) throw new Error('Enter a valid inward unit cost.');
+  if (type !== 'add' && type !== 'subtract') throw new Error('Invalid stock movement type.');
+  const current = list.find((m) => m.id === id);
+  if (!current) throw new Error('Raw material was not found.');
+  if (type === 'subtract' && numQty > Number(current.currentStock)) {
+    throw new Error(`Only ${current.currentStock} ${current.unit} of ${current.name} is available.`);
+  }
 
   let affected = null;
   const updated = list.map((m) => {
     if (m.id === id) {
-      const newStock = type === 'add' ? m.currentStock + numQty : Math.max(0, m.currentStock - numQty);
-      affected = { ...m, currentStock: parseFloat(newStock.toFixed(2)) };
+      const newStock = type === 'add' ? Number(m.currentStock) + numQty : Number(m.currentStock) - numQty;
+      const unitCost = type === 'add' && inwardUnitCost != null && newStock > 0
+        ? ((Number(m.currentStock) * Number(m.unitCost)) + (numQty * Number(inwardUnitCost))) / newStock
+        : Number(m.unitCost);
+      affected = { ...m, currentStock: parseFloat(newStock.toFixed(3)), unitCost: Number(unitCost.toFixed(2)) };
       return affected;
     }
     return m;
@@ -1087,19 +1108,25 @@ export function getUtensils() {
 
 export function saveUtensil(utensil) {
   const list = getUtensils();
+  const totalQty = Number(utensil.totalQty);
+  const inUse = Number(utensil.inUse || 0);
+  const inCleaning = Number(utensil.inCleaning || 0);
+  if (![totalQty, inUse, inCleaning].every((value) => Number.isInteger(value) && value >= 0) || inUse + inCleaning > totalQty) {
+    throw new Error('Utensil quantities must be whole numbers, and active use plus cleaning cannot exceed total owned.');
+  }
   let updated;
   let saved;
   if (utensil.id && list.some((u) => u.id === utensil.id)) {
     updated = list.map((u) => {
       if (u.id === utensil.id) {
-        saved = { ...u, ...utensil, totalQty: Number(utensil.totalQty) || 0 };
+        saved = { ...u, ...utensil, totalQty, inUse, inCleaning };
         return saved;
       }
       return u;
     });
   } else {
-    const id = utensil.id || `UTN-${String(list.length + 1).padStart(2, '0')}`;
-    saved = { ...utensil, id, totalQty: Number(utensil.totalQty) || 0, inUse: 0, inCleaning: 0 };
+    const id = utensil.id || inventoryId('UTN');
+    saved = { ...utensil, id, totalQty, inUse, inCleaning };
     updated = [...list, saved];
   }
   setStored('tbk_utensils', updated);
@@ -1117,7 +1144,9 @@ export function deleteUtensil(id) {
 
 export function adjustUtensilStock(id, qtyToAdd, reason = 'Purchase Inward') {
   const list = getUtensils();
-  const numQty = Number(qtyToAdd) || 0;
+  const numQty = Number(qtyToAdd);
+  if (!Number.isInteger(numQty) || numQty <= 0) throw new Error('Enter a positive whole number of utensils.');
+  if (!list.some((utensil) => utensil.id === id)) throw new Error('Utensil was not found.');
   let affected;
   const updated = list.map((u) => {
     if (u.id === id) {
@@ -1473,7 +1502,21 @@ export function getPurchaseBills() {
 
 export function savePurchaseBill(bill) {
   const list = getPurchaseBills();
-  const id = bill.id || `BILL-${Math.floor(500 + Math.random() * 500)}`;
+  const id = bill.id || inventoryId('BILL');
+  const isExisting = list.some((b) => b.id === id);
+  if (!isExisting) {
+    if (!Array.isArray(bill.items) || bill.items.length === 0) throw new Error('Add at least one purchased item.');
+    for (const item of bill.items) {
+      const collection = item.type === 'raw_material' ? getRawMaterials() : item.type === 'utensil' ? getUtensils() : [];
+      const quantity = Number(item.qty);
+      if (!collection.some((entry) => entry.id === item.itemId) || !Number.isFinite(quantity) || quantity <= 0
+        || (item.type === 'utensil' && !Number.isInteger(quantity))
+        || (item.type === 'raw_material' && Math.abs(quantity - Math.round(quantity * 1000) / 1000) > 0.0000001)
+        || !Number.isFinite(Number(item.unitCost)) || Number(item.unitCost) < 0) {
+        throw new Error('Each purchase bill item needs an existing inventory item, a valid rate, and a positive quantity (whole pieces for utensils).');
+      }
+    }
+  }
   const savedBill = {
     ...bill,
     id,
@@ -1482,7 +1525,6 @@ export function savePurchaseBill(bill) {
     paymentStatus: bill.paymentStatus || 'pending',
   };
 
-  const isExisting = list.some((b) => b.id === savedBill.id);
   const updated = isExisting
     ? list.map((b) => (b.id === savedBill.id ? savedBill : b))
     : [savedBill, ...list];
@@ -1492,48 +1534,18 @@ export function savePurchaseBill(bill) {
 
   // Stock is received once when the bill is created. Later edits, including
   // marking it paid, must not receive the same items a second time.
-  if (!isExisting && bill.items && Array.isArray(bill.items)) {
+  if (!isExisting) {
     for (const item of bill.items) {
-      const qty = Number(item.qty) || 0;
-      if (qty <= 0) continue;
+      const qty = Number(item.qty);
 
       if (item.type === 'raw_material') {
-        // Find or create raw material
         const rawMats = getRawMaterials();
-        const existing = rawMats.find(
-          (m) => m.id === item.itemId || m.name.toLowerCase() === (item.name || '').toLowerCase()
-        );
-        if (existing) {
-          adjustRawMaterialStock(existing.id, qty, 'add', `Purchase Bill #${savedBill.invoiceNumber || savedBill.id}`);
-        } else {
-          // Add new raw material to inventory
-          saveRawMaterial({
-            name: item.name,
-            currentStock: qty,
-            unit: item.unit || 'kg',
-            reorderLevel: 10,
-            unitCost: Number(item.unitCost) || 0,
-            supplier: savedBill.supplier,
-            category: 'General Supplies',
-          });
-        }
+        const existing = rawMats.find((m) => m.id === item.itemId);
+        adjustRawMaterialStock(existing.id, qty, 'add', `Purchase Bill #${savedBill.invoiceNumber || savedBill.id}`, item.unitCost);
       } else if (item.type === 'utensil') {
-        // Find or create utensil
         const utensils = getUtensils();
-        const existing = utensils.find(
-          (u) => u.id === item.itemId || u.name.toLowerCase() === (item.name || '').toLowerCase()
-        );
-        if (existing) {
-          adjustUtensilStock(existing.id, qty, `Purchase Bill #${savedBill.invoiceNumber || savedBill.id}`);
-        } else {
-          saveUtensil({
-            name: item.name,
-            category: 'Service Ware',
-            totalQty: qty,
-            unitCost: Number(item.unitCost) || 0,
-            condition: 'Excellent',
-          });
-        }
+        const existing = utensils.find((u) => u.id === item.itemId);
+        adjustUtensilStock(existing.id, qty, `Purchase Bill #${savedBill.invoiceNumber || savedBill.id}`);
       }
     }
   }
@@ -1665,7 +1677,7 @@ export function getStockMovements() {
 export function addStockMovement(movement) {
   const list = getStockMovements();
   const entry = {
-    id: `MOV-${Date.now().toString(36).toUpperCase()}`,
+    id: inventoryId('MOV'),
     date: new Date().toISOString(),
     ...movement,
   };
@@ -1673,7 +1685,7 @@ export function addStockMovement(movement) {
   setStored('tbk_stock_movements', updated);
   syncDocToFirestore('stock_movements', entry.id, entry);
   logAuditEvent({
-    action: `Stock ${entry.type === 'inward' ? 'Received' : 'Consumed'}`,
+    action: `Stock ${entry.type === 'inward' ? 'Received' : 'Deducted'}`,
     user: entry.user || 'System',
     details: `${entry.material} — ${entry.type === 'inward' ? '+' : '-'}${entry.qty} ${entry.unit} — ${entry.source}`,
     ip: 'Inventory Module',
@@ -1705,7 +1717,7 @@ export function calculateDishPortionsAvailable(dishId, dishName = '') {
   );
 
   if (!recipe || !recipe.ingredients || recipe.ingredients.length === 0) {
-    return { portionsAvailable: 50, limitingIngredient: null, recipeFound: false };
+    return { portionsAvailable: null, limitingIngredient: null, recipeFound: false };
   }
 
   let minPortions = Infinity;
@@ -1713,11 +1725,12 @@ export function calculateDishPortionsAvailable(dishId, dishName = '') {
 
   for (const ing of recipe.ingredients) {
     const mat = materials.find((m) => m.id === ing.id || m.name.toLowerCase() === ing.name.toLowerCase());
-    const requiredPerServing = Number(ing.qty) || 0;
+    const requiredPerServing = (Number(ing.qty) || 0) / (Number(recipe.yieldServings) || 1);
 
-    if (!mat || requiredPerServing <= 0) continue;
+    if (requiredPerServing <= 0) continue;
+    if (!mat) return { portionsAvailable: 0, limitingIngredient: ing.name, recipeFound: true };
 
-    const available = Math.floor(mat.currentStock / requiredPerServing);
+    const available = Math.floor((Number(mat.currentStock) + 0.000000001) / requiredPerServing);
     if (available < minPortions) {
       minPortions = available;
       limitingIngredient = mat.name;
@@ -1732,10 +1745,10 @@ export function calculateDishPortionsAvailable(dishId, dishName = '') {
 }
 
 // ─── Order Auto-Deduction Engine ─────────────────────────────
-export function deductIngredientsForOrder(orderItems, orderRefId = 'KOT') {
+export function assertOrderIngredientsAvailable(orderItems) {
   const recipes = getRecipes();
-  let rawMaterials = getRawMaterials();
-  const deductedSummary = [];
+  const rawMaterials = getRawMaterials();
+  const requirements = new Map();
 
   for (const item of orderItems) {
     const recipe = recipes.find(
@@ -1747,16 +1760,49 @@ export function deductIngredientsForOrder(orderItems, orderRefId = 'KOT') {
     const orderedQty = Number(item.quantity || item.qty) || 1;
 
     for (const ing of recipe.ingredients) {
-      const requiredTotal = (Number(ing.qty) || 0) * orderedQty;
+      const requiredTotal = ((Number(ing.qty) || 0) * orderedQty) / (Number(recipe.yieldServings) || 1);
       if (requiredTotal <= 0) continue;
 
       const matIndex = rawMaterials.findIndex(
         (m) => m.id === ing.id || m.name.toLowerCase() === ing.name.toLowerCase()
       );
 
+      if (matIndex === -1) throw new Error(`${ing.name} is missing from raw materials.`);
+      const material = rawMaterials[matIndex];
+      requirements.set(material.id, (requirements.get(material.id) || 0) + requiredTotal);
+    }
+  }
+
+  for (const [id, required] of requirements) {
+    const material = rawMaterials.find((m) => m.id === id);
+    if (required > Number(material.currentStock) + 0.000000001) {
+      throw new Error(`Not enough ${material.name}: need ${required.toFixed(2)} ${material.unit}, available ${material.currentStock} ${material.unit}.`);
+    }
+  }
+  return requirements;
+}
+
+export function deductIngredientsForOrder(orderItems, orderRefId = 'KOT') {
+  const requirements = assertOrderIngredientsAvailable(orderItems);
+  const recipes = getRecipes();
+  const rawMaterials = getRawMaterials();
+  const deductedSummary = [];
+
+  for (const item of orderItems) {
+    const recipe = recipes.find(
+      (r) => r.dishId === item.id || r.dishName.toLowerCase() === (item.name || '').toLowerCase()
+    );
+    if (!recipe?.ingredients) continue;
+    const orderedQty = Number(item.quantity || item.qty) || 1;
+    for (const ing of recipe.ingredients) {
+      const requiredTotal = ((Number(ing.qty) || 0) * orderedQty) / (Number(recipe.yieldServings) || 1);
+      if (requiredTotal <= 0) continue;
+      const matIndex = rawMaterials.findIndex(
+        (m) => m.id === ing.id || m.name.toLowerCase() === ing.name.toLowerCase()
+      );
       if (matIndex !== -1) {
-        const current = rawMaterials[matIndex].currentStock;
-        const newStock = Math.max(0, parseFloat((current - requiredTotal).toFixed(3)));
+        const current = Number(rawMaterials[matIndex].currentStock);
+        const newStock = parseFloat((current - requiredTotal).toFixed(6));
         rawMaterials[matIndex].currentStock = newStock;
 
         deductedSummary.push({
@@ -1780,7 +1826,7 @@ export function deductIngredientsForOrder(orderItems, orderRefId = 'KOT') {
   }
 
   setStored('tbk_raw_materials', rawMaterials);
-  rawMaterials.forEach((rm) => syncDocToFirestore('raw_materials', rm.id, rm));
+  rawMaterials.filter((rm) => requirements.has(rm.id)).forEach((rm) => syncDocToFirestore('raw_materials', rm.id, rm));
   return deductedSummary;
 }
 
@@ -2712,7 +2758,7 @@ export function savePurchaseOrder(po) {
       return p;
     });
   } else {
-    const id = po.id || `PO-${Math.floor(700 + Math.random() * 300)}`;
+    const id = po.id || inventoryId('PO');
     savedPO = {
       ...po,
       id,
@@ -2944,13 +2990,17 @@ export function createKotForOrder(order) {
 export function reconcilePhysicalStockItem(item, reason = 'Periodic Stock Audit') {
   const materials = getRawMaterials();
   const target = materials.find((m) => m.id === item.id || m.name.toLowerCase() === item.name.toLowerCase());
-  if (!target) return null;
+  if (!target) throw new Error(`${item.name || item.id} is no longer in raw materials.`);
 
   const currentStock = Number(target.currentStock) || 0;
+  if (item.systemStock != null && Math.abs(Number(item.systemStock) - currentStock) > 0.000001) {
+    throw new Error(`${target.name} changed since this count was opened. Reload the count and try again.`);
+  }
   const parsedCount = Number(item.countedStock);
-  const countedStock = item.countedStock === '' || item.countedStock == null || !Number.isFinite(parsedCount)
-    ? currentStock
-    : parsedCount;
+  if (item.countedStock === '' || item.countedStock == null || !Number.isFinite(parsedCount) || parsedCount < 0) {
+    throw new Error(`Enter a valid non-negative count for ${target.name}.`);
+  }
+  const countedStock = parsedCount;
   const variance = countedStock - currentStock;
 
   if (variance !== 0) {
@@ -2962,6 +3012,7 @@ export function reconcilePhysicalStockItem(item, reason = 'Periodic Stock Audit'
 
     // Record movement in stock ledger
     addStockMovement({
+      materialId: target.id,
       material: target.name,
       type: variance > 0 ? 'inward' : 'outward',
       qty: Math.abs(variance),
@@ -2982,6 +3033,18 @@ export function reconcilePhysicalStockItem(item, reason = 'Periodic Stock Audit'
 }
 
 export function reconcileAllPhysicalStock(itemsList) {
+  const materials = getRawMaterials();
+  for (const item of itemsList) {
+    const count = Number(item.countedStock);
+    if (item.countedStock === '' || item.countedStock == null || !Number.isFinite(count) || count < 0) {
+      throw new Error(`Enter a valid non-negative count for ${item.name}.`);
+    }
+    const target = materials.find((material) => material.id === item.id);
+    if (!target) throw new Error(`${item.name} is no longer in raw materials.`);
+    if (item.systemStock != null && Math.abs(Number(item.systemStock) - Number(target.currentStock)) > 0.000001) {
+      throw new Error(`${item.name} changed since this count was opened. Reload the count and try again.`);
+    }
+  }
   for (const item of itemsList) {
     reconcilePhysicalStockItem(item);
   }
@@ -2995,41 +3058,26 @@ export function getWastageLogs() {
 
 export function saveWastageLog(log) {
   const list = getWastageLogs();
-  const id = log.id || `WST-${Math.floor(200 + Math.random() * 300)}`;
+  const material = getRawMaterials().find((m) => m.id === log.materialId);
+  const qty = Number(log.qty);
+  if (!material) throw new Error('Select a raw material from inventory.');
+  if (!Number.isFinite(qty) || qty <= 0) throw new Error('Enter a valid wastage quantity.');
+  if (qty > Number(material.currentStock)) throw new Error(`Only ${material.currentStock} ${material.unit} of ${material.name} is available.`);
+  const id = log.id || inventoryId('WST');
   const savedLog = {
     ...log,
     id,
     date: log.date || new Date().toISOString().split('T')[0],
-    qty: Number(log.qty) || 1,
-    cost: Number(log.cost) || 0,
+    material: material.name,
+    unit: material.unit,
+    qty,
+    cost: Number((qty * Number(material.unitCost || 0)).toFixed(2)),
     loggedBy: log.loggedBy || 'Chef / Staff',
   };
+  adjustRawMaterialStock(material.id, qty, 'subtract', `Kitchen Wastage #${formatRecordId(id)} (${savedLog.reason})`);
   const updated = [savedLog, ...list];
   setStored('tbk_wastage', updated);
   syncDocToFirestore('wastage', savedLog.id, savedLog);
-
-  // Auto-deduct from raw materials if matching material found
-  let matchedMaterial = false;
-  if (savedLog.material) {
-    const materials = getRawMaterials();
-    const match = materials.find((m) => m.name.toLowerCase() === savedLog.material.toLowerCase() || m.id === savedLog.materialId);
-    if (match) {
-      matchedMaterial = true;
-      adjustRawMaterialStock(match.id, savedLog.qty, 'subtract', `Kitchen Wastage #${savedLog.id} (${savedLog.reason})`);
-    }
-  }
-
-  // The stock adjustment above already writes a movement for matched items.
-  if (!matchedMaterial) {
-    addStockMovement({
-      material: savedLog.material,
-      type: 'outward',
-      qty: savedLog.qty,
-      unit: savedLog.unit || 'kg',
-      source: `Kitchen Wastage (${savedLog.reason})`,
-      user: savedLog.loggedBy,
-    });
-  }
 
   // Log audit event
   logAuditEvent({

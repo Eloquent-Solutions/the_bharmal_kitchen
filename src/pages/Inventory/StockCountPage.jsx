@@ -15,6 +15,7 @@ import {
   RotateCcw,
 } from 'lucide-react';
 import { getRawMaterials, reconcileAllPhysicalStock, logAuditEvent } from '../../services/dataService';
+import { formatRecordId } from '../../utils/formatters';
 import toast from 'react-hot-toast';
 
 export default function StockCountPage() {
@@ -27,7 +28,7 @@ export default function StockCountPage() {
       id: rm.id,
       name: rm.name,
       systemStock: Number(rm.currentStock) || 0,
-      countedStock: Number(rm.currentStock) || 0, // default: matches system
+      countedStock: String(Number(rm.currentStock) || 0), // default: matches system
       unit: rm.unit || 'kg',
       unitCost: Number(rm.unitCost) || 0,
     }));
@@ -43,20 +44,24 @@ export default function StockCountPage() {
 
   const handleCountChange = (id, val) => {
     setItems((prev) =>
-      prev.map((item) => (item.id === id ? { ...item, countedStock: Number(val) || 0 } : item))
+      prev.map((item) => (item.id === id ? { ...item, countedStock: val } : item))
     );
   };
 
   const handleReconcileAll = () => {
-    reconcileAllPhysicalStock(items);
-    loadItems();
-    logAuditEvent({
-      action: 'Physical Stock Reconciled',
-      user: 'Manager',
-      details: `Reconciled ${items.length} raw material items against physical count`,
-      ip: 'Inventory Terminal',
-    });
-    toast.success('Physical count reconciled! Inventory system balances updated.');
+    try {
+      reconcileAllPhysicalStock(items);
+      loadItems();
+      logAuditEvent({
+        action: 'Physical Stock Reconciled',
+        user: 'Manager',
+        details: `Reconciled ${items.length} raw material items against physical count`,
+        ip: 'Inventory Terminal',
+      });
+      toast.success('Physical count reconciled! Inventory system balances updated.');
+    } catch (error) {
+      toast.error(error.message);
+    }
   };
 
   return (
@@ -69,9 +74,14 @@ export default function StockCountPage() {
             Conduct physical inventory checks, verify discrepancies, and reconcile actual stock balances.
           </p>
         </div>
-        <button className="btn btn-primary" onClick={handleReconcileAll}>
-          <Save size={16} /> Reconcile Stock Discrepancies
-        </button>
+        <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+          <button className="btn btn-secondary" onClick={loadItems}>
+            <RotateCcw size={16} /> Reload Current Stock
+          </button>
+          <button className="btn btn-primary" onClick={handleReconcileAll}>
+            <Save size={16} /> Reconcile Stock Discrepancies
+          </button>
+        </div>
       </div>
 
       {/* Table */}
@@ -98,18 +108,20 @@ export default function StockCountPage() {
                 </tr>
               ) : (
                 items.map((item) => {
-                  const diff = item.countedStock - item.systemStock;
+                  const invalid = item.countedStock === '' || !Number.isFinite(Number(item.countedStock)) || Number(item.countedStock) < 0;
+                  const diff = item.countedStock === '' ? 0 : Number(item.countedStock) - item.systemStock;
                   const diffVal = diff * item.unitCost;
 
                   return (
                     <tr key={item.id}>
-                      <td style={{ fontWeight: '700', color: 'var(--text-tertiary)' }}>{item.id}</td>
+                      <td title={item.id} style={{ fontWeight: '700', color: 'var(--text-tertiary)' }}>{formatRecordId(item.id)}</td>
                       <td style={{ fontWeight: '700' }}>{item.name}</td>
                       <td>{item.systemStock} {item.unit}</td>
                       <td>
                         <input
                           type="number"
-                          step="0.1"
+                          step="0.001"
+                          min="0"
                           className="input"
                           value={item.countedStock}
                           onChange={(e) => handleCountChange(item.id, e.target.value)}
@@ -117,13 +129,15 @@ export default function StockCountPage() {
                         />
                       </td>
                       <td style={{ fontWeight: '700', color: diff === 0 ? 'var(--color-success)' : diff < 0 ? 'var(--color-danger)' : 'var(--color-primary)' }}>
-                        {diff > 0 ? `+${diff.toFixed(1)}` : diff.toFixed(1)} {item.unit}
+                        {invalid ? 'Enter count' : `${diff > 0 ? '+' : ''}${Number(diff.toFixed(3))} ${item.unit}`}
                       </td>
                       <td style={{ fontWeight: '700', color: diffVal < 0 ? 'var(--color-danger)' : 'var(--text-primary)' }}>
-                        {diffVal === 0 ? '₹0.00' : `${diffVal < 0 ? '-' : '+'}₹${Math.abs(diffVal).toFixed(2)}`}
+                        {invalid ? '—' : diffVal === 0 ? '₹0.00' : `${diffVal < 0 ? '-' : '+'}₹${Math.abs(diffVal).toFixed(2)}`}
                       </td>
                       <td>
-                        {diff === 0 ? (
+                        {invalid ? (
+                          <span className="badge badge-warning">Enter count</span>
+                        ) : diff === 0 ? (
                           <span className="badge badge-success">Matched</span>
                         ) : (
                           <span className="badge badge-danger">Discrepancy</span>

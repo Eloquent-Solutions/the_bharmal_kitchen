@@ -13,52 +13,47 @@ import {
   AlertTriangle,
   Calendar,
 } from 'lucide-react';
-import { formatCurrency, formatDate } from '../../utils/formatters';
-import { getWastageLogs, saveWastageLog, logAuditEvent } from '../../services/dataService';
+import { formatCurrency, formatDate, formatRecordId } from '../../utils/formatters';
+import { getWastageLogs, saveWastageLog, getRawMaterials } from '../../services/dataService';
 import toast from 'react-hot-toast';
 
 export default function WastagePage() {
   const [wastage, setWastage] = useState([]);
+  const [materials, setMaterials] = useState([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [newWastage, setNewWastage] = useState({
-    material: '',
+    materialId: '',
     qty: 1,
-    unit: 'kg',
-    cost: 0,
     reason: '',
   });
 
   const loadWastage = () => {
     setWastage(getWastageLogs());
+    setMaterials(getRawMaterials());
   };
 
   useEffect(() => {
     loadWastage();
     const handleUpdate = () => loadWastage();
     window.addEventListener('tbk_wastage_updated', handleUpdate);
-    return () => window.removeEventListener('tbk_wastage_updated', handleUpdate);
+    window.addEventListener('tbk_raw_materials_updated', handleUpdate);
+    return () => {
+      window.removeEventListener('tbk_wastage_updated', handleUpdate);
+      window.removeEventListener('tbk_raw_materials_updated', handleUpdate);
+    };
   }, []);
 
   const handleAddWastage = (e) => {
     e.preventDefault();
-    const created = {
-      id: `WST-${Math.floor(200 + Math.random() * 800)}`,
-      date: new Date().toISOString().split('T')[0],
-      ...newWastage,
-      qty: Number(newWastage.qty) || 1,
-      cost: Number(newWastage.cost) || 0,
-      loggedBy: 'Current User',
-    };
-    saveWastageLog(created);
-    logAuditEvent({
-      action: 'Wastage Logged',
-      user: 'Current User',
-      details: `${created.material} – ${created.qty} ${created.unit} lost (₹${created.cost}) — ${created.reason}`,
-      ip: 'POS Terminal',
-    });
-    setIsModalOpen(false);
-    setNewWastage({ material: '', qty: 1, unit: 'kg', cost: 0, reason: '' });
-    toast.success('Wastage record logged and subtracted from stock ledger');
+    try {
+      saveWastageLog({ ...newWastage, loggedBy: 'Current User' });
+      setIsModalOpen(false);
+      setNewWastage({ materialId: '', qty: 1, reason: '' });
+      loadWastage();
+      toast.success('Wastage recorded and deducted from stock.');
+    } catch (error) {
+      toast.error(error.message);
+    }
   };
 
   const totalWastageCost = wastage.reduce((s, w) => s + (w.cost || 0), 0);
@@ -119,7 +114,7 @@ export default function WastagePage() {
               ) : (
                 wastage.map((w) => (
                   <tr key={w.id}>
-                    <td style={{ fontWeight: '700', color: 'var(--text-tertiary)' }}>{w.id}</td>
+                    <td title={w.id} style={{ fontWeight: '700', color: 'var(--text-tertiary)' }}>{formatRecordId(w.id)}</td>
                     <td style={{ fontSize: 'var(--font-xs)', color: 'var(--text-secondary)' }}>{formatDate(w.date)}</td>
                     <td style={{ fontWeight: '700' }}>{w.material}</td>
                     <td style={{ fontWeight: '600' }}>{w.qty} {w.unit}</td>
@@ -146,22 +141,24 @@ export default function WastagePage() {
             <form onSubmit={handleAddWastage} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
               <div>
                 <label className="label">Raw Material</label>
-                <input
-                  type="text"
+                <select
                   className="input"
                   required
-                  placeholder="e.g. Fresh Chicken"
-                  value={newWastage.material}
-                  onChange={(e) => setNewWastage({ ...newWastage, material: e.target.value })}
-                />
+                  value={newWastage.materialId}
+                  onChange={(e) => setNewWastage({ ...newWastage, materialId: e.target.value })}
+                >
+                  <option value="">Select raw material</option>
+                  {materials.map((material) => <option key={material.id} value={material.id}>{material.name} — {material.currentStock} {material.unit} available</option>)}
+                </select>
               </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-3)' }}>
                 <div>
-                  <label className="label">Wasted Quantity</label>
+                  <label className="label">Wasted Quantity ({materials.find((m) => m.id === newWastage.materialId)?.unit || 'unit'})</label>
                   <input
                     type="number"
-                    step="0.1"
+                    step="0.001"
+                    min="0.001"
                     className="input"
                     required
                     value={newWastage.qty}
@@ -170,13 +167,9 @@ export default function WastagePage() {
                 </div>
                 <div>
                   <label className="label">Estimated Loss (₹)</label>
-                  <input
-                    type="number"
-                    className="input"
-                    required
-                    value={newWastage.cost}
-                    onChange={(e) => setNewWastage({ ...newWastage, cost: e.target.value })}
-                  />
+                  <div className="input" style={{ display: 'flex', alignItems: 'center' }}>
+                    {formatCurrency((Number(newWastage.qty) || 0) * (materials.find((m) => m.id === newWastage.materialId)?.unitCost || 0))}
+                  </div>
                 </div>
               </div>
 

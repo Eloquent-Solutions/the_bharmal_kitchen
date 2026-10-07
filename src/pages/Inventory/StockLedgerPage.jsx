@@ -14,7 +14,7 @@ import {
   Calendar,
   Filter,
 } from 'lucide-react';
-import { formatCurrency, formatDateTime } from '../../utils/formatters';
+import { formatCurrency, formatDateTime, formatRecordId } from '../../utils/formatters';
 import { getStockMovements } from '../../services/dataService';
 
 export default function StockLedgerPage() {
@@ -94,7 +94,7 @@ export default function StockLedgerPage() {
               ) : (
                 filtered.map((l) => (
                   <tr key={l.id}>
-                    <td style={{ fontWeight: '700', color: 'var(--text-tertiary)' }}>{l.id}</td>
+                    <td title={l.id} style={{ fontWeight: '700', color: 'var(--text-tertiary)', whiteSpace: 'nowrap' }}>{formatRecordId(l.id)}</td>
                     <td style={{ fontSize: 'var(--font-xs)', color: 'var(--text-secondary)' }}>
                       {formatDateTime(l.date)}
                     </td>
@@ -106,7 +106,7 @@ export default function StockLedgerPage() {
                         </span>
                       ) : (
                         <span className="badge badge-warning" style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
-                          <ArrowUpRight size={12} /> Recipe Used
+                          <ArrowUpRight size={12} /> Outward Stock
                         </span>
                       )}
                     </td>

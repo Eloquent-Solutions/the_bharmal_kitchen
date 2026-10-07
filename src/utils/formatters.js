@@ -20,6 +20,8 @@ export function formatCurrency(amount = 0, showSymbol = true) {
   return showSymbol ? `₹${formatted}` : formatted;
 }
 
+export { formatRecordId } from './recordIds';
+
 /**
  * Format Date to readable string
  * @param {Date|string|number} date

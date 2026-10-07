@@ -25,8 +25,9 @@ import {
   saveRawMaterial,
   deleteRawMaterial,
   adjustRawMaterialStock,
+  addStockMovement,
 } from '../../services/dataService';
-import { formatCurrency } from '../../utils/formatters';
+import { formatCurrency, formatRecordId } from '../../utils/formatters';
 import toast from 'react-hot-toast';
 
 export default function RawMaterialsPage() {
@@ -53,6 +54,8 @@ export default function RawMaterialsPage() {
 
   useEffect(() => {
     refreshData();
+    window.addEventListener('tbk_raw_materials_updated', refreshData);
+    return () => window.removeEventListener('tbk_raw_materials_updated', refreshData);
   }, []);
 
   const refreshData = () => {
@@ -72,19 +75,18 @@ export default function RawMaterialsPage() {
   const handleAdjustStock = (e) => {
     e.preventDefault();
     const qty = Number(adjustQty);
-    if (!qty || qty <= 0) return;
-
-    const updated = adjustRawMaterialStock(
-      adjustingItem.id,
-      qty,
-      adjustType,
-      `Manual ${adjustType === 'add' ? 'Inward Delivery' : 'Outward Spoilage / Correction'}`
-    );
-    setMaterials(updated);
-
-    toast.success(`Stock for ${adjustingItem.name} updated successfully!`);
-    setAdjustingItem(null);
-    setAdjustQty('');
+    try {
+      const updated = adjustRawMaterialStock(
+        adjustingItem.id, qty, adjustType,
+        `Manual ${adjustType === 'add' ? 'Inward Delivery' : 'Outward Spoilage / Correction'}`
+      );
+      setMaterials(updated);
+      toast.success(`Stock for ${adjustingItem.name} updated successfully!`);
+      setAdjustingItem(null);
+      setAdjustQty('');
+    } catch (error) {
+      toast.error(error.message);
+    }
   };
 
   const handleOpenAdd = () => {
@@ -126,14 +128,27 @@ export default function RawMaterialsPage() {
       ...(editingMat || {}),
       name: formData.name.trim(),
       category: formData.category,
-      currentStock: Number(formData.currentStock) || 0,
+      currentStock: editingMat
+        ? getRawMaterials().find((m) => m.id === editingMat.id)?.currentStock ?? editingMat.currentStock
+        : Number(formData.currentStock),
       unit: formData.unit,
-      reorderLevel: Number(formData.reorderLevel) || 5,
+      reorderLevel: Number(formData.reorderLevel),
       unitCost: Number(formData.unitCost) || 0,
       supplier: formData.supplier.trim() || 'Direct Market',
     };
 
+    if (!editingMat && (!Number.isFinite(payload.currentStock) || payload.currentStock < 0)) {
+      toast.error('Opening stock must be zero or greater.');
+      return;
+    }
+    if (!Number.isFinite(payload.reorderLevel) || payload.reorderLevel < 0 || !Number.isFinite(payload.unitCost) || payload.unitCost < 0) {
+      toast.error('Reorder level and unit cost must be zero or greater.');
+      return;
+    }
     const updated = saveRawMaterial(payload);
+    if (!editingMat && payload.currentStock > 0) {
+      addStockMovement({ materialId: updated.at(-1).id, material: payload.name, type: 'inward', qty: payload.currentStock, unit: payload.unit, source: 'Opening Stock', user: 'Inventory Staff' });
+    }
     setMaterials(updated);
     setIsAddModalOpen(false);
     toast.success(editingMat ? 'Material updated successfully!' : 'New material created!');
@@ -141,9 +156,13 @@ export default function RawMaterialsPage() {
 
   const handleDelete = (id) => {
     if (window.confirm('Are you sure you want to remove this raw material?')) {
-      const updated = deleteRawMaterial(id);
-      setMaterials(updated);
-      toast.success('Raw material deleted');
+      try {
+        const updated = deleteRawMaterial(id);
+        setMaterials(updated);
+        toast.success('Raw material deleted');
+      } catch (error) {
+        toast.error(error.message);
+      }
     }
   };
 
@@ -235,7 +254,7 @@ export default function RawMaterialsPage() {
                 const isLow = mat.currentStock <= mat.reorderLevel;
                 return (
                   <tr key={mat.id}>
-                    <td style={{ fontWeight: '700', color: 'var(--color-primary)' }}>{mat.id}</td>
+                    <td title={mat.id} style={{ fontWeight: '700', color: 'var(--color-primary)' }}>{formatRecordId(mat.id)}</td>
                     <td style={{ fontWeight: '600' }}>{mat.name}</td>
                     <td><span className="badge badge-neutral">{mat.category}</span></td>
                     <td style={{ fontWeight: '700' }}>
@@ -393,6 +412,7 @@ export default function RawMaterialsPage() {
                     className="input"
                     value={formData.unit}
                     onChange={(e) => setFormData({ ...formData, unit: e.target.value })}
+                    disabled={!!editingMat}
                   >
                     <option value="kg">kg (Kilogram)</option>
                     <option value="gms">gms (Gram)</option>
@@ -405,11 +425,13 @@ export default function RawMaterialsPage() {
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-3)' }}>
                 <div>
-                  <label className="label">Current Stock</label>
+                  <label className="label">{editingMat ? 'Current Stock (use Adjust Stock to change)' : 'Opening Stock'}</label>
                   <input
                     type="number"
                     step="0.01"
+                    min="0"
                     required
+                    disabled={!!editingMat}
                     className="input"
                     value={formData.currentStock}
                     onChange={(e) => setFormData({ ...formData, currentStock: e.target.value })}
@@ -420,6 +442,7 @@ export default function RawMaterialsPage() {
                   <input
                     type="number"
                     step="0.01"
+                    min="0"
                     required
                     className="input"
                     value={formData.reorderLevel}
@@ -434,6 +457,7 @@ export default function RawMaterialsPage() {
                   <input
                     type="number"
                     step="0.01"
+                    min="0"
                     required
                     className="input"
                     value={formData.unitCost}

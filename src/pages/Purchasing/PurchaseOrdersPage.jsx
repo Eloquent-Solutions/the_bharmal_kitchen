@@ -2,8 +2,7 @@
  * Purchase Orders (PO) Management
  * The Bharmals Kitchen — Restaurant Management System
  *
- * Full Firestore synchronization for requisitions, goods receipts,
- * and supplier delivery tracking.
+ * Supplier delivery status tracking. Purchase bills record stock inward.
  */
 
 import { useState, useEffect, useCallback } from 'react';
@@ -17,7 +16,7 @@ import {
   Eye,
   Trash2,
 } from 'lucide-react';
-import { formatCurrency, formatDate } from '../../utils/formatters';
+import { formatCurrency, formatDate, formatRecordId } from '../../utils/formatters';
 import {
   getPurchaseOrders,
   savePurchaseOrder,
@@ -63,7 +62,6 @@ export default function PurchaseOrdersPage() {
   const handleCreatePO = (e) => {
     e.preventDefault();
     const created = {
-      id: `PO-${Math.floor(700 + Math.random() * 300)}`,
       date: new Date().toISOString().split('T')[0],
       supplier: newPO.supplier || (suppliers[0]?.name || 'Al-Madina Poultry Farm'),
       expectedDate: newPO.expectedDate,
@@ -71,15 +69,15 @@ export default function PurchaseOrdersPage() {
       itemsCount: Number(newPO.itemsCount) || 1,
       status: 'sent',
     };
-    savePurchaseOrder(created);
+    const saved = savePurchaseOrder(created)[0];
     logAuditEvent({
       action: 'Purchase Order Created',
       user: 'Procurement Manager',
-      details: `Created PO #${created.id} for ${created.supplier} worth ₹${created.totalAmount}`,
+      details: `Created PO #${saved.id} for ${saved.supplier} worth ₹${saved.totalAmount}`,
       ip: 'Purchasing Terminal',
     });
     setIsModalOpen(false);
-    toast.success('Purchase Order generated and synced to Firebase!');
+    toast.success('Purchase order saved.');
   };
 
   const handleMarkReceived = (id) => {
@@ -87,12 +85,12 @@ export default function PurchaseOrdersPage() {
     if (!target) return;
     savePurchaseOrder({ ...target, status: 'received' });
     logAuditEvent({
-      action: 'Goods Received (PO)',
+      action: 'Purchase Order Marked Received',
       user: 'Procurement Manager',
       details: `PO #${id} received from ${target.supplier}`,
       ip: 'Purchasing Terminal',
     });
-    toast.success(`PO #${id} marked as received into Inventory!`);
+    toast.success(`PO #${id} marked delivered. Record a purchase bill to add stock.`);
   };
 
   const handleDelete = (id) => {
@@ -121,7 +119,7 @@ export default function PurchaseOrdersPage() {
         <div>
           <h2 style={{ fontSize: 'var(--font-2xl)', fontWeight: '700' }}>Purchase Orders (PO)</h2>
           <p style={{ color: 'var(--text-secondary)', fontSize: 'var(--font-sm)' }}>
-            Procurement requisitions, expected supplier deliveries, and stock goods receiving.
+            Track expected deliveries. Record a purchase bill when goods arrive to add them to inventory.
           </p>
         </div>
         <button className="btn btn-primary" onClick={() => setIsModalOpen(true)}>
@@ -143,7 +141,7 @@ export default function PurchaseOrdersPage() {
           />
         </div>
         <div style={{ fontSize: 'var(--font-sm)', color: 'var(--text-secondary)' }}>
-          Total POs in Cloud: <strong>{orders.length}</strong>
+          Total Purchase Orders: <strong>{orders.length}</strong>
         </div>
       </div>
 
@@ -173,7 +171,7 @@ export default function PurchaseOrdersPage() {
               ) : (
                 filtered.map((po) => (
                   <tr key={po.id}>
-                    <td style={{ fontWeight: '700' }}>{po.id}</td>
+                    <td title={po.id} style={{ fontWeight: '700' }}>{formatRecordId(po.id)}</td>
                     <td style={{ fontSize: 'var(--font-xs)', color: 'var(--text-secondary)' }}>{formatDate(po.date)}</td>
                     <td style={{ fontWeight: '600' }}>{po.supplier}</td>
                     <td style={{ fontSize: 'var(--font-xs)', color: 'var(--text-secondary)' }}>{formatDate(po.expectedDate)}</td>
@@ -183,7 +181,7 @@ export default function PurchaseOrdersPage() {
                       {po.status === 'sent' ? (
                         <span className="badge badge-warning">Awaiting Delivery</span>
                       ) : (
-                        <span className="badge badge-success">Goods Received</span>
+                        <span className="badge badge-success">Delivery Confirmed</span>
                       )}
                     </td>
                     <td style={{ textAlign: 'right' }}>
@@ -193,7 +191,7 @@ export default function PurchaseOrdersPage() {
                             className="btn btn-sm btn-success"
                             onClick={() => handleMarkReceived(po.id)}
                           >
-                            Receive Goods
+                            Mark Delivered
                           </button>
                         )}
                         <button

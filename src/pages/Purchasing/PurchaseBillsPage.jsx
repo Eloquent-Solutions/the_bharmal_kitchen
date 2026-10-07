@@ -29,7 +29,7 @@ import {
   getRawMaterials,
   getUtensils,
 } from '../../services/dataService';
-import { formatCurrency, formatDate } from '../../utils/formatters';
+import { formatCurrency, formatDate, formatRecordId } from '../../utils/formatters';
 import toast from 'react-hot-toast';
 
 export default function PurchaseBillsPage() {
@@ -54,6 +54,9 @@ export default function PurchaseBillsPage() {
 
   useEffect(() => {
     refreshData();
+    const events = ['tbk_purchase_bills_updated', 'tbk_raw_materials_updated', 'tbk_utensils_updated', 'tbk_suppliers_updated'];
+    events.forEach((event) => window.addEventListener(event, refreshData));
+    return () => events.forEach((event) => window.removeEventListener(event, refreshData));
   }, []);
 
   const refreshData = () => {
@@ -80,10 +83,10 @@ export default function PurchaseBillsPage() {
               type: 'raw_material',
               itemId: defaultMat.id,
               name: defaultMat.name,
-              qty: 25,
+              qty: '',
               unit: defaultMat.unit,
               unitCost: defaultMat.unitCost,
-              total: 25 * defaultMat.unitCost,
+              total: 0,
             },
           ]
         : [],
@@ -119,10 +122,10 @@ export default function PurchaseBillsPage() {
           type: 'raw_material',
           itemId: defaultMat ? defaultMat.id : '',
           name: defaultMat ? defaultMat.name : '',
-          qty: 10,
+          qty: '',
           unit: defaultMat ? defaultMat.unit : 'kg',
           unitCost: defaultMat ? defaultMat.unitCost : 100,
-          total: defaultMat ? 10 * defaultMat.unitCost : 1000,
+          total: 0,
         },
       ],
     });
@@ -141,10 +144,10 @@ export default function PurchaseBillsPage() {
         type: 'raw_material',
         itemId: mat ? mat.id : '',
         name: mat ? mat.name : 'Raw Material',
-        qty: 10,
+        qty: '',
         unit: mat ? mat.unit : 'kg',
         unitCost: mat ? mat.unitCost : 100,
-        total: (mat ? mat.unitCost : 100) * 10,
+        total: 0,
       };
     } else {
       const utn = utensils[0];
@@ -152,10 +155,10 @@ export default function PurchaseBillsPage() {
         type: 'utensil',
         itemId: utn ? utn.id : '',
         name: utn ? utn.name : 'Kitchen Utensil',
-        qty: 5,
+        qty: '',
         unit: 'pcs',
         unitCost: utn ? utn.unitCost || 500 : 500,
-        total: (utn ? utn.unitCost || 500 : 500) * 5,
+        total: 0,
       };
     }
     setFormData({ ...formData, items: updated });
@@ -230,6 +233,16 @@ export default function PurchaseBillsPage() {
       toast.error('Supplier and at least 1 item line are required');
       return;
     }
+    if (!editingBill && formData.items.some((item) => {
+      const collection = item.type === 'utensil' ? utensils : rawMaterials;
+      return !collection.some((entry) => entry.id === item.itemId)
+        || !Number.isFinite(Number(item.qty)) || Number(item.qty) <= 0
+        || (item.type === 'utensil' && !Number.isInteger(Number(item.qty)))
+        || !Number.isFinite(Number(item.unitCost)) || Number(item.unitCost) < 0;
+    })) {
+      toast.error('Each bill line needs an existing item, a valid rate, and a positive quantity (whole pieces for utensils).');
+      return;
+    }
 
     const subtotal = calculateSubtotal();
     const gst = Math.round(subtotal * 0.05); // 5% GST
@@ -248,16 +261,19 @@ export default function PurchaseBillsPage() {
       paymentStatus: formData.paymentStatus,
     };
 
-    const updated = savePurchaseBill(payload);
-    setBills(updated);
-    setIsModalOpen(false);
-    refreshData();
-
-    toast.success(
-      editingBill
-        ? `Invoice #${payload.invoiceNumber} updated!`
-        : `Bill #${payload.invoiceNumber} saved! Materials & Utensils auto-inwarded to stock inventory.`
-    );
+    try {
+      const updated = savePurchaseBill(payload);
+      setBills(updated);
+      setIsModalOpen(false);
+      refreshData();
+      toast.success(
+        editingBill
+          ? `Invoice #${payload.invoiceNumber} updated!`
+          : `Bill #${payload.invoiceNumber} saved! Materials & Utensils added to stock.`
+      );
+    } catch (error) {
+      toast.error(error.message);
+    }
   };
 
   const confirmDelete = () => {
@@ -334,7 +350,7 @@ export default function PurchaseBillsPage() {
             <tbody>
               {filtered.map((b) => (
                 <tr key={b.id}>
-                  <td style={{ fontWeight: '700', color: 'var(--text-tertiary)' }}>{b.id}</td>
+                  <td title={b.id} style={{ fontWeight: '700', color: 'var(--text-tertiary)' }}>{formatRecordId(b.id)}</td>
                   <td style={{ fontWeight: '700', color: 'var(--color-primary)' }}>{b.invoiceNumber}</td>
                   <td style={{ fontWeight: '600' }}>{b.supplier}</td>
                   <td>
@@ -528,6 +544,7 @@ export default function PurchaseBillsPage() {
                       <input
                         type="number"
                         step="0.01"
+                        min="0.01"
                         placeholder="Qty"
                         className="input"
                         value={item.qty}
@@ -539,6 +556,7 @@ export default function PurchaseBillsPage() {
                       <input
                         type="number"
                         step="0.01"
+                        min="0"
                         placeholder="Rate ₹"
                         className="input"
                         value={item.unitCost}
@@ -601,7 +619,7 @@ export default function PurchaseBillsPage() {
               Delete Purchase Bill
             </h3>
             <p style={{ fontSize: 'var(--font-sm)', color: 'var(--text-secondary)', marginBottom: 'var(--space-4)' }}>
-              Are you sure you want to delete purchase invoice <strong>{billToDelete?.invoiceNumber}</strong>?
+              Are you sure you want to delete purchase invoice <strong>{billToDelete?.invoiceNumber}</strong>? Stock received from this bill will remain in inventory. Use Stock Count to correct its balance.
             </p>
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 'var(--space-2)' }}>
               <button className="btn btn-secondary" onClick={() => setIsDeleteModalOpen(false)}>Cancel</button>

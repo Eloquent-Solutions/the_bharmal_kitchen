@@ -48,11 +48,13 @@ The app's route guard is only a user-interface control. Firestore rules are the 
 
 ## 4. Acceptance checks before going live
 
-- Build and lint pass: `npm run build` and `npm run lint`.
+- Build, lint, and inventory flow tests pass: `npm run build`, `npm run lint`, and `npm run test:inventory`.
 - Owner sign-in reaches `/dashboard`; inventory and purchasing screens load from the production project.
 - A staff member receives only the expected role and tabs. A customer or unsigned visitor cannot reach staff pages or read Firestore data.
 - The production project starts without bundled sample orders, customers, stock, or staff records.
 - Inventory changes and order status changes remain correct across two browsers after refresh. Check stock counts, purchase bills, and wastage with disposable test records.
 - Firestore permission errors are visible and addressed. `dataService.js` currently saves to browser storage first and logs cloud write failures, so a success toast alone does not prove cloud persistence.
+
+Inventory is still a browser-first workflow. Stock writes are not Firestore transactions, and the inventory collections do not use live Firestore listeners. Two staff members changing the same item can overwrite one another's stock or ledger state. Verify single-user workflows with disposable data only; move stock mutations to transactional server-side operations before relying on this release for live inventory accounting.
 
 Do not accept real customer orders or payments through this release. The customer payment confirmation is only a client-side simulation, and the public ordering workflow needs separate server-side payment verification, order validation, and security review.

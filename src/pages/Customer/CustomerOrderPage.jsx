@@ -330,7 +330,12 @@ export default function CustomerOrderPage() {
     const orderId = `TBK-${orderNum}`;
 
     const standardDishes = cart.filter((c) => !c.isCombo);
-    deductIngredientsForOrder(standardDishes, orderId);
+    try {
+      deductIngredientsForOrder(standardDishes, orderId);
+    } catch (error) {
+      toast.error(error.message);
+      return;
+    }
 
     const orderPayload = {
       id: orderId,
@@ -350,7 +355,7 @@ export default function CustomerOrderPage() {
         price: c.price,
         isCombo: !!c.isCombo,
       })),
-      total: cartTotals.grandTotal,
+      total: cartTotals.total,
       paymentStatus: 'pending',
       paymentMethod: method === 'cash' ? 'Cash on Counter/Delivery' : 'Card at Counter/Table',
       transactionId: `PAY-${Date.now().toString().slice(-6)}`,
@@ -382,7 +387,12 @@ export default function CustomerOrderPage() {
 
       // Auto-deduct raw materials for standard dishes
       const standardDishes = cart.filter((c) => !c.isCombo);
-      deductIngredientsForOrder(standardDishes, orderId);
+      try {
+        deductIngredientsForOrder(standardDishes, orderId);
+      } catch (error) {
+        toast.error(error.message);
+        return;
+      }
 
       const orderPayload = {
         id: orderId,
@@ -402,7 +412,7 @@ export default function CustomerOrderPage() {
           price: c.price,
           isCombo: !!c.isCombo,
         })),
-        total: cartTotals.grandTotal,
+        total: cartTotals.total,
         paymentStatus: 'paid',
         paymentMethod: 'UPI Online',
         transactionId: txn,
@@ -450,7 +460,7 @@ export default function CustomerOrderPage() {
   };
 
   // UPI deep link
-  const upiLink = `upi://pay?pa=${encodeURIComponent(upiSettings.upiId)}&pn=${encodeURIComponent(upiSettings.merchantName)}&am=${cartTotals.grandTotal}&cu=INR&tn=${encodeURIComponent(`TBK-Feast-Order`)}`;
+  const upiLink = `upi://pay?pa=${encodeURIComponent(upiSettings.upiId)}&pn=${encodeURIComponent(upiSettings.merchantName)}&am=${cartTotals.total}&cu=INR&tn=${encodeURIComponent(`TBK-Feast-Order`)}`;
   const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(upiLink)}&bgcolor=ffffff&color=000000&margin=10`;
 
   const terms = getTermsAndConditions();
@@ -546,7 +556,7 @@ export default function CustomerOrderPage() {
                   fontWeight: '900',
                 }}
               >
-                {formatCurrency(cartTotals.grandTotal)}
+                {formatCurrency(cartTotals.total)}
               </span>
             )}
           </button>
@@ -1301,11 +1311,11 @@ export default function CustomerOrderPage() {
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '6px' }}>
                 <span>CGST (2.5%) + SGST (2.5%)</span>
-                <span>{formatCurrency(cartTotals.taxAmount)}</span>
+                <span>{formatCurrency(cartTotals.totalTax)}</span>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '16px', fontWeight: '800', marginBottom: '14px' }}>
                 <span>Total Payable</span>
-                <span style={{ color: 'var(--color-primary)' }}>{formatCurrency(cartTotals.grandTotal)}</span>
+                <span style={{ color: 'var(--color-primary)' }}>{formatCurrency(cartTotals.total)}</span>
               </div>
 
               <button
@@ -1350,7 +1360,7 @@ export default function CustomerOrderPage() {
             >
               <div style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>Payable Amount</div>
               <div style={{ fontSize: '24px', fontWeight: '900', color: 'var(--color-primary)' }}>
-                {formatCurrency(cartTotals.grandTotal)}
+                {formatCurrency(cartTotals.total)}
               </div>
               <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>
                 UPI ID: <strong>{upiSettings.upiId}</strong> ({upiSettings.merchantName})

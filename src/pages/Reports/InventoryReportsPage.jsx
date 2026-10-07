@@ -6,14 +6,6 @@
  */
 
 import { useState, useEffect } from 'react';
-import {
-  Package,
-  TrendingDown,
-  Download,
-  AlertTriangle,
-  IndianRupee,
-  Layers,
-} from 'lucide-react';
 import { getRawMaterials } from '../../services/dataService';
 import { formatCurrency } from '../../utils/formatters';
 
@@ -42,12 +34,12 @@ export default function InventoryReportsPage() {
 
   materials.forEach((m) => {
     const cat = m.category || 'Dry Groceries & Spices';
-    const unitPrice = Number(m.unitPrice) || Number(m.costPerUnit) || 100;
+    const unitPrice = Number(m.unitCost) || 0;
     const currentStock = Number(m.currentStock) || 0;
     const itemValuation = currentStock * unitPrice;
     totalValuation += itemValuation;
 
-    if (currentStock <= (Number(m.reorderLevel) || 10)) {
+    if (currentStock <= Number(m.reorderLevel ?? 0)) {
       lowStockCount += 1;
     }
 
@@ -70,9 +62,9 @@ export default function InventoryReportsPage() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-5)' }}>
       <div>
-        <h2 style={{ fontSize: 'var(--font-2xl)', fontWeight: '700' }}>Inventory Valuation & Consumption Reports</h2>
+        <h2 style={{ fontSize: 'var(--font-2xl)', fontWeight: '700' }}>Inventory Valuation Report</h2>
         <p style={{ color: 'var(--text-secondary)', fontSize: 'var(--font-sm)' }}>
-          Capital locked in storage, material consumption velocity, and category asset distribution.
+          Current raw material value and category distribution based on each material's unit cost.
         </p>
       </div>
 

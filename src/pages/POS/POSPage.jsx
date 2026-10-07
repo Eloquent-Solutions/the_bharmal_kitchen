@@ -36,6 +36,7 @@ import {
   getCombos,
   calculateDishPortionsAvailable,
   deductIngredientsForOrder,
+  assertOrderIngredientsAvailable,
   saveOrder,
   getTables,
   getChannelSettings,
@@ -269,10 +270,11 @@ export default function POSPage() {
   const processSmartCardPayment = (targetUidOrCustomerId) => {
     try {
       const orderId = `TBK-${Date.now().toString().slice(-4)}`;
-      const result = debitCustomerWallet(targetUidOrCustomerId, totals.grandTotal, orderId);
+      const standardDishes = cart.filter((c) => !c.isCombo);
+      assertOrderIngredientsAvailable(standardDishes);
+      const result = debitCustomerWallet(targetUidOrCustomerId, totals.total, orderId);
 
       // Auto-deduct raw materials
-      const standardDishes = cart.filter((c) => !c.isCombo);
       deductIngredientsForOrder(standardDishes, orderId);
 
       // Save order marked as PAID with smart_card
@@ -292,7 +294,7 @@ export default function POSPage() {
           price: c.price,
           isCombo: !!c.isCombo,
         })),
-        total: totals.grandTotal,
+        total: totals.total,
         status: 'received',
         paymentStatus: 'paid',
         paymentMethod: 'smart_card',
@@ -343,7 +345,13 @@ export default function POSPage() {
 
     // Auto-deduct raw materials for standard dishes
     const standardDishes = cart.filter((c) => !c.isCombo);
-    const deductions = deductIngredientsForOrder(standardDishes, orderId);
+    let deductions;
+    try {
+      deductions = deductIngredientsForOrder(standardDishes, orderId);
+    } catch (error) {
+      toast.error(error.message);
+      return;
+    }
 
     // Save order
     saveOrder({
@@ -362,7 +370,7 @@ export default function POSPage() {
         price: c.price,
         isCombo: !!c.isCombo,
       })),
-      total: totals.grandTotal,
+      total: totals.total,
       status: 'received',
       paymentStatus: orderType === 'Takeaway' ? 'paid' : 'pending',
       createdBy: user?.displayName || user?.email || 'POS Staff',
@@ -593,7 +601,7 @@ export default function POSPage() {
                           <span className="pos-portion-tag soldout">✕ Sold Out (Raw Stock)</span>
                         )
                       ) : (
-                        <span className="pos-portion-tag good">● In Stock</span>
+                        <span className="pos-portion-tag low">Stock not tracked — add recipe</span>
                       )}
                     </div>
 
@@ -741,7 +749,7 @@ export default function POSPage() {
           </div>
           <div className="pos-summary-total">
             <span>Total Payable</span>
-            <span>{formatCurrency(totals.grandTotal)}</span>
+            <span>{formatCurrency(totals.total)}</span>
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
@@ -776,7 +784,7 @@ export default function POSPage() {
               <div>
                 <span style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>Total Bill Due</span>
                 <div style={{ fontSize: 'var(--font-2xl)', fontWeight: '900', color: 'var(--color-primary)' }}>
-                  {formatCurrency(totals.grandTotal)}
+                  {formatCurrency(totals.total)}
                 </div>
               </div>
               <span className="badge badge-primary" style={{ fontSize: '11px' }}>
@@ -895,7 +903,7 @@ export default function POSPage() {
                       Cancel
                     </button>
                     <button type="submit" className="btn btn-success" style={{ fontWeight: '800' }}>
-                      Verify & Deduct {formatCurrency(totals.grandTotal)}
+                      Verify & Deduct {formatCurrency(totals.total)}
                     </button>
                   </div>
                 </form>

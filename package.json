@@ -8,6 +8,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "lint": "eslint .",
+    "test:inventory": "node --test tests/inventory.flow.test.mjs",
     "test:rules": "firebase emulators:exec --only firestore --project demo-tbk-rules 'node --test tests/firestore.rules.test.mjs'"
   },
   "dependencies": {

@@ -30,7 +30,7 @@ import {
   getRawMaterials,
   calculateDishPortionsAvailable,
 } from '../../services/dataService';
-import { formatCurrency } from '../../utils/formatters';
+import { formatCurrency, formatRecordId } from '../../utils/formatters';
 import toast from 'react-hot-toast';
 
 export default function RecipesPage() {
@@ -55,6 +55,9 @@ export default function RecipesPage() {
 
   useEffect(() => {
     refreshData();
+    const events = ['tbk_recipes_updated', 'tbk_raw_materials_updated', 'tbk_menu_items_updated'];
+    events.forEach((event) => window.addEventListener(event, refreshData));
+    return () => events.forEach((event) => window.removeEventListener(event, refreshData));
   }, []);
 
   const refreshData = () => {
@@ -65,7 +68,11 @@ export default function RecipesPage() {
 
   const handleOpenAdd = () => {
     setEditingRecipe(null);
-    const defaultDish = menuItems.length > 0 ? menuItems[0] : null;
+    const defaultDish = menuItems.find((dish) => !recipes.some((recipe) => recipe.dishId === dish.id || recipe.dishName.toLowerCase() === dish.name.toLowerCase()));
+    if (!defaultDish) {
+      toast.error('Every menu dish already has a recipe. Add a dish in Menu first.');
+      return;
+    }
     const defaultMat = rawMaterials.length > 0 ? rawMaterials[0] : null;
 
     setFormData({
@@ -178,6 +185,22 @@ export default function RecipesPage() {
       toast.error('Dish title is required for recipe');
       return;
     }
+    if (!menuItems.some((dish) => dish.id === formData.dishId)) {
+      toast.error('Select an existing menu dish.');
+      return;
+    }
+    if (recipes.some((recipe) => recipe.id !== editingRecipe?.id && (recipe.dishId === formData.dishId || recipe.dishName.toLowerCase() === formData.dishName.toLowerCase()))) {
+      toast.error('This menu dish already has a recipe. Edit its existing recipe instead.');
+      return;
+    }
+    if (!Number.isInteger(Number(formData.yieldServings)) || Number(formData.yieldServings) < 1) {
+      toast.error('Portion yield must be a whole number greater than zero.');
+      return;
+    }
+    if (formData.ingredients.some((ing) => !rawMaterials.some((m) => m.id === ing.id) || !Number.isFinite(Number(ing.qty)) || Number(ing.qty) <= 0)) {
+      toast.error('Each ingredient needs an existing raw material and a positive quantity.');
+      return;
+    }
 
     const payload = {
       ...(editingRecipe || {}),
@@ -251,10 +274,11 @@ export default function RecipesPage() {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(360px, 1fr))', gap: 'var(--space-4)' }}>
         {filtered.map((recipe) => {
           const portionInfo = calculateDishPortionsAvailable(recipe.dishId, recipe.dishName);
-          const calculatedCost = (recipe.ingredients || []).reduce(
+          const batchCost = (recipe.ingredients || []).reduce(
             (sum, ing) => sum + (Number(ing.cost) || 0),
             0
           );
+          const calculatedCost = batchCost / (Number(recipe.yieldServings) || 1);
           const foodCostPercent = recipe.sellingPrice > 0 ? Math.round((calculatedCost / recipe.sellingPrice) * 100) : 0;
 
           return (
@@ -276,7 +300,7 @@ export default function RecipesPage() {
                       Yield: {recipe.yieldServings || 1} Portion Servings
                     </div>
                   </div>
-                  <span className="badge badge-primary">{recipe.id}</span>
+                  <span className="badge badge-primary" title={recipe.id}>{formatRecordId(recipe.id)}</span>
                 </div>
 
                 {/* Live Portions from Raw Materials Indicator */}
@@ -397,7 +421,7 @@ export default function RecipesPage() {
                     value={formData.dishId}
                     onChange={handleDishSelect}
                   >
-                    {menuItems.map((m) => (
+                    {menuItems.filter((dish) => !recipes.some((recipe) => recipe.id !== editingRecipe?.id && (recipe.dishId === dish.id || recipe.dishName.toLowerCase() === dish.name.toLowerCase()))).map((m) => (
                       <option key={m.id} value={m.id}>{m.name} (₹{m.price})</option>
                     ))}
                   </select>
@@ -451,6 +475,7 @@ export default function RecipesPage() {
                       <input
                         type="number"
                         step="0.01"
+                        min="0.01"
                         placeholder="Qty"
                         className="input"
                         value={ing.qty}

@@ -21,7 +21,7 @@ import {
   saveUtensil,
   deleteUtensil,
 } from '../../services/dataService';
-import { formatCurrency } from '../../utils/formatters';
+import { formatCurrency, formatRecordId } from '../../utils/formatters';
 import toast from 'react-hot-toast';
 
 export default function UtensilsPage() {
@@ -44,6 +44,8 @@ export default function UtensilsPage() {
 
   useEffect(() => {
     refreshData();
+    window.addEventListener('tbk_utensils_updated', refreshData);
+    return () => window.removeEventListener('tbk_utensils_updated', refreshData);
   }, []);
 
   const refreshData = () => {
@@ -87,6 +89,13 @@ export default function UtensilsPage() {
     e.preventDefault();
     if (!formData.name.trim()) {
       toast.error('Utensil name is required');
+      return;
+    }
+    const total = Number(formData.totalQty);
+    const inUse = Number(formData.inUse);
+    const inCleaning = Number(formData.inCleaning);
+    if (![total, inUse, inCleaning].every((value) => Number.isInteger(value) && value >= 0) || inUse + inCleaning > total) {
+      toast.error('Asset quantities must be whole numbers, and in use plus cleaning cannot exceed total owned.');
       return;
     }
 
@@ -176,7 +185,7 @@ export default function UtensilsPage() {
             <tbody>
               {filtered.map((u) => (
                 <tr key={u.id}>
-                  <td style={{ fontWeight: '700', color: 'var(--color-primary)' }}>{u.id}</td>
+                  <td title={u.id} style={{ fontWeight: '700', color: 'var(--color-primary)' }}>{formatRecordId(u.id)}</td>
                   <td style={{ fontWeight: '700', fontSize: 'var(--font-base)' }}>{u.name}</td>
                   <td>
                     <span className="badge badge-neutral">{u.category}</span>
