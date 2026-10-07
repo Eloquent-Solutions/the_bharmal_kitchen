@@ -78,7 +78,7 @@ export default function AppLayout() {
             </div>
           </>
         ) : (
-          <><div className="spinner" /><p>Loading inventory from Firebase...</p></>
+          <><div className="spinner" /><p>Loading The Bharmals Kitchen...</p></>
         )}
       </div>
     );
