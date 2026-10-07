@@ -72,7 +72,10 @@ export default function AppLayout() {
           <>
             <h2>Inventory could not be synchronized</h2>
             <p>{inventorySync.error} Check your connection and access, then reload this page.</p>
-            <button className="btn btn-primary" onClick={() => window.location.reload()}>Retry</button>
+            <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+              <button className="btn btn-primary" onClick={() => window.location.reload()}>Retry</button>
+              <button className="btn btn-secondary" onClick={signOut}>Sign out</button>
+            </div>
           </>
         ) : (
           <><div className="spinner" /><p>Loading inventory from Firebase...</p></>

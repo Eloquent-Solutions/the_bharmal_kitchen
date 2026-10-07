@@ -54,6 +54,14 @@ const ROLE_DESCRIPTIONS = {
   'Awaiting Role': 'Newly registered user awaiting admin role & tab assignment.',
 };
 
+const INVENTORY_ROLE_DESCRIPTIONS = {
+  Owner: 'Inventory access and staff role management.',
+  Manager: 'Inventory, receiving, suppliers, and valuation.',
+  Chef: 'Raw materials, stock counts, and wastage.',
+  'Inventory Manager': 'Inventory, receiving, suppliers, and valuation.',
+  Accountant: 'Inventory valuation report.',
+};
+
 export default function UsersRolesPage() {
   const [users, setUsers] = useState([]);
   const [search, setSearch] = useState('');
@@ -304,12 +312,14 @@ export default function UsersRolesPage() {
         <div>
           <h2 style={{ fontSize: 'var(--font-2xl)', fontWeight: '700' }}>Users & Access Control</h2>
           <p style={{ color: 'var(--text-secondary)', fontSize: 'var(--font-sm)' }}>
-            {isDemoMode
+            {isInventoryOnly
+              ? 'Ask each staff member to sign in first, then assign their inventory role here.'
+              : isDemoMode
               ? 'Manage system users, assign roles, and control which tabs each user can see.'
               : 'Ask each staff member to sign in with Google first, then edit their account here to assign a role and tabs.'}
           </p>
         </div>
-        {isDemoMode && <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+        {isDemoMode && !isInventoryOnly && <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
           <button className="btn btn-secondary" onClick={() => setIsInviteModalOpen(true)}>
             <Mail size={16} /> Invite via Email
           </button>
@@ -325,7 +335,7 @@ export default function UsersRolesPage() {
           <Shield size={16} style={{ color: 'var(--color-primary)' }} /> System Roles
         </h3>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '8px' }}>
-          {Object.entries(ROLE_DESCRIPTIONS).map(([role, desc]) => (
+          {Object.entries(isInventoryOnly ? INVENTORY_ROLE_DESCRIPTIONS : ROLE_DESCRIPTIONS).map(([role, desc]) => (
             <div key={role} style={{ padding: '8px', background: 'var(--bg-glass-subtle)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)' }}>
               <div style={{ fontWeight: '700', fontSize: '12px', marginBottom: '3px', color: 'var(--color-primary)' }}>{role}</div>
               <div style={{ fontSize: '10px', color: 'var(--text-tertiary)', lineHeight: 1.3 }}>{desc}</div>
@@ -471,7 +481,7 @@ export default function UsersRolesPage() {
                   {(isInventoryOnly ? ROLE_OPTIONS.filter((r) => ['Owner', 'Manager', 'Inventory Manager', 'Chef', 'Accountant'].includes(r) || r === formData.role) : ROLE_OPTIONS).map((r) => <option key={r} value={r}>{r}</option>)}
                 </select>
                 <p style={{ fontSize: '10px', color: 'var(--text-tertiary)', marginTop: '4px' }}>
-                  {ROLE_DESCRIPTIONS[formData.role] || ''}
+                  {(isInventoryOnly ? INVENTORY_ROLE_DESCRIPTIONS[formData.role] : ROLE_DESCRIPTIONS[formData.role]) || ''}
                 </p>
               </div>
 
