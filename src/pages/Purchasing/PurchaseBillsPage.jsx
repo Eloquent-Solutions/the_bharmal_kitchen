@@ -31,6 +31,9 @@ import {
 } from '../../services/dataService';
 import { formatCurrency, formatDate, formatRecordId } from '../../utils/formatters';
 import toast from 'react-hot-toast';
+import { isDemoMode, isInventoryOnly } from '../../firebase/config';
+import { savePurchaseBillCloud } from '../../services/inventoryCloud';
+import './PurchaseBillsPage.css';
 
 export default function PurchaseBillsPage() {
   const [bills, setBills] = useState([]);
@@ -42,6 +45,7 @@ export default function PurchaseBillsPage() {
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [billToDelete, setBillToDelete] = useState(null);
   const [editingBill, setEditingBill] = useState(null);
+  const [saving, setSaving] = useState(false);
 
   const [formData, setFormData] = useState({
     invoiceNumber: '',
@@ -49,6 +53,7 @@ export default function PurchaseBillsPage() {
     billDate: new Date().toISOString().split('T')[0],
     dueDate: '',
     paymentStatus: 'pending',
+    gstAmount: 0,
     items: [],
   });
 
@@ -68,15 +73,17 @@ export default function PurchaseBillsPage() {
 
   const handleOpenAdd = () => {
     setEditingBill(null);
-    const defaultSup = suppliers.length > 0 ? suppliers[0].name : 'Al-Madina Poultry Farm';
+    const defaultSup = suppliers[0]?.name || '';
     const defaultMat = rawMaterials.length > 0 ? rawMaterials[0] : null;
 
     setFormData({
+      id: `BILL-${crypto.randomUUID()}`,
       invoiceNumber: `INV-${Date.now().toString().slice(-4)}`,
       supplier: defaultSup,
       billDate: new Date().toISOString().split('T')[0],
       dueDate: new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0],
       paymentStatus: 'pending',
+      gstAmount: 0,
       items: defaultMat
         ? [
             {
@@ -102,6 +109,7 @@ export default function PurchaseBillsPage() {
       billDate: bill.billDate || '',
       dueDate: bill.dueDate || '',
       paymentStatus: bill.paymentStatus || 'pending',
+      gstAmount: Number(bill.gstAmount || 0),
       items: bill.items ? [...bill.items] : [],
     });
     setIsModalOpen(true);
@@ -206,7 +214,7 @@ export default function PurchaseBillsPage() {
     updated[index] = {
       ...updated[index],
       qty: qtyVal,
-      total: Math.round(qty * unitCost),
+      total: Number((qty * unitCost).toFixed(2)),
     };
     setFormData({ ...formData, items: updated });
   };
@@ -218,18 +226,18 @@ export default function PurchaseBillsPage() {
     updated[index] = {
       ...updated[index],
       unitCost: costVal,
-      total: Math.round(qty * unitCost),
+      total: Number((qty * unitCost).toFixed(2)),
     };
     setFormData({ ...formData, items: updated });
   };
 
   const calculateSubtotal = () => {
-    return formData.items.reduce((sum, item) => sum + (Number(item.total) || 0), 0);
+    return Number(formData.items.reduce((sum, item) => sum + (Number(item.total) || 0), 0).toFixed(2));
   };
 
-  const handleSaveBill = (e) => {
+  const handleSaveBill = async (e) => {
     e.preventDefault();
-    if (!formData.supplier || formData.items.length === 0) {
+    if (!suppliers.some((supplier) => supplier.name === formData.supplier) || formData.items.length === 0) {
       toast.error('Supplier and at least 1 item line are required');
       return;
     }
@@ -245,11 +253,16 @@ export default function PurchaseBillsPage() {
     }
 
     const subtotal = calculateSubtotal();
-    const gst = Math.round(subtotal * 0.05); // 5% GST
-    const total = subtotal + gst;
+    const gst = Number(formData.gstAmount);
+    if (!Number.isFinite(gst) || gst < 0) {
+      toast.error('Enter the GST amount shown on the invoice.');
+      return;
+    }
+    const total = Number((subtotal + gst).toFixed(2));
 
     const payload = {
       ...(editingBill || {}),
+      id: editingBill?.id || formData.id,
       invoiceNumber: formData.invoiceNumber || `INV-${Date.now().toString().slice(-4)}`,
       supplier: formData.supplier,
       billDate: formData.billDate,
@@ -261,9 +274,13 @@ export default function PurchaseBillsPage() {
       paymentStatus: formData.paymentStatus,
     };
 
+    setSaving(true);
     try {
-      const updated = savePurchaseBill(payload);
-      setBills(updated);
+      if (isInventoryOnly && !isDemoMode) {
+        await savePurchaseBillCloud(payload, editingBill);
+      } else {
+        setBills(savePurchaseBill(payload));
+      }
       setIsModalOpen(false);
       refreshData();
       toast.success(
@@ -273,6 +290,8 @@ export default function PurchaseBillsPage() {
       );
     } catch (error) {
       toast.error(error.message);
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -285,10 +304,20 @@ export default function PurchaseBillsPage() {
     toast.success('Purchase bill removed');
   };
 
-  const handleMarkPaid = (bill) => {
-    const updated = savePurchaseBill({ ...bill, paymentStatus: 'paid' });
-    setBills(updated);
-    toast.success(`Purchase invoice #${bill.id} marked as PAID`);
+  const handleMarkPaid = async (bill) => {
+    setSaving(true);
+    try {
+      if (isInventoryOnly && !isDemoMode) {
+        await savePurchaseBillCloud({ ...bill, paymentStatus: 'paid' }, bill);
+      } else {
+        setBills(savePurchaseBill({ ...bill, paymentStatus: 'paid' }));
+      }
+      toast.success(`Purchase invoice #${bill.id} marked as PAID`);
+    } catch (error) {
+      toast.error(error.message);
+    } finally {
+      setSaving(false);
+    }
   };
 
   const filtered = bills.filter(
@@ -308,7 +337,7 @@ export default function PurchaseBillsPage() {
             Adding supplier bills automatically increments Raw Materials and Utensils stock in real time.
           </p>
         </div>
-        <button className="btn btn-primary" onClick={handleOpenAdd}>
+        <button className="btn btn-primary" onClick={handleOpenAdd} disabled={suppliers.length === 0 || (rawMaterials.length === 0 && utensils.length === 0)} title={suppliers.length === 0 ? 'Add a supplier first' : undefined}>
           <Plus size={16} /> Record Purchase Bill
         </button>
       </div>
@@ -383,25 +412,26 @@ export default function PurchaseBillsPage() {
                           className="btn btn-secondary btn-sm"
                           style={{ fontSize: '11px', padding: '3px 8px' }}
                           onClick={() => handleMarkPaid(b)}
+                          disabled={saving}
                         >
                           Mark Paid
                         </button>
                       )}
-                      <button
+                      {!isInventoryOnly && <button
                         className="btn-icon"
                         onClick={() => handleOpenEdit(b)}
                         title="Edit Bill"
                       >
                         <Edit2 size={14} />
-                      </button>
-                      <button
+                      </button>}
+                      {!isInventoryOnly && <button
                         className="btn-icon"
                         onClick={() => handleOpenDelete(b)}
                         title="Delete Bill"
                         style={{ color: 'var(--color-danger)' }}
                       >
                         <Trash2 size={14} />
-                      </button>
+                      </button>}
                     </div>
                   </td>
                 </tr>
@@ -428,9 +458,11 @@ export default function PurchaseBillsPage() {
                   <label className="label">Supplier / Vendor</label>
                   <select
                     className="input"
+                    required
                     value={formData.supplier}
                     onChange={(e) => setFormData({ ...formData, supplier: e.target.value })}
                   >
+                    <option value="">Select supplier</option>
                     {suppliers.map((s) => (
                       <option key={s.id} value={s.name}>{s.name} ({s.category})</option>
                     ))}
@@ -503,7 +535,7 @@ export default function PurchaseBillsPage() {
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '200px', overflowY: 'auto' }}>
                   {formData.items.map((item, idx) => (
-                    <div key={idx} style={{ display: 'grid', gridTemplateColumns: '120px 2fr 80px 80px 80px 30px', gap: '6px', alignItems: 'center' }}>
+                    <div key={idx} className="purchase-bill-line">
                       {/* Type selector: Raw Material vs Utensil */}
                       <select
                         className="input"
@@ -590,11 +622,25 @@ export default function PurchaseBillsPage() {
               </fieldset>
 
               {/* Totals Summary */}
+              <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 'var(--space-2)' }}>
+                <label className="label" htmlFor="purchase-bill-gst" style={{ margin: 0 }}>GST on invoice (₹)</label>
+                <input
+                  id="purchase-bill-gst"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  required
+                  className="input"
+                  style={{ width: '110px' }}
+                  value={formData.gstAmount}
+                  onChange={(e) => setFormData({ ...formData, gstAmount: e.target.value })}
+                />
+              </div>
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 'var(--space-4)', fontSize: '13px', paddingTop: '4px' }}>
                 <div>Subtotal: <strong>₹{calculateSubtotal()}</strong></div>
-                <div>GST (5%): <strong>₹{Math.round(calculateSubtotal() * 0.05)}</strong></div>
+                <div>GST: <strong>₹{Number(formData.gstAmount) || 0}</strong></div>
                 <div style={{ color: 'var(--color-primary)', fontWeight: '800' }}>
-                  Grand Total: ₹{Math.round(calculateSubtotal() * 1.05)}
+                  Grand Total: ₹{Number((calculateSubtotal() + (Number(formData.gstAmount) || 0)).toFixed(2))}
                 </div>
               </div>
 
@@ -602,7 +648,7 @@ export default function PurchaseBillsPage() {
                 <button type="button" className="btn btn-secondary" onClick={() => setIsModalOpen(false)}>
                   Cancel
                 </button>
-                <button type="submit" className="btn btn-primary">
+                <button type="submit" className="btn btn-primary" disabled={saving}>
                   {editingBill ? 'Save Changes' : 'Save & Inward to Stock'}
                 </button>
               </div>

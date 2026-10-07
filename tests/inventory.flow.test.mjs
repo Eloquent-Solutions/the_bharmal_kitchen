@@ -15,6 +15,7 @@ globalThis.window = { dispatchEvent: () => {} };
 const vite = await createServer({
   configFile: false,
   server: { middlewareMode: true, hmr: { server: createHttpServer() } },
+  optimizeDeps: { noDiscovery: true, include: [] },
   appType: 'custom',
 });
 const inventory = await vite.ssrLoadModule('/src/services/dataService.js');

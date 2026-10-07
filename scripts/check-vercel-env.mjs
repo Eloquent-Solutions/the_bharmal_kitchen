@@ -19,6 +19,10 @@ if (process.env.VITE_STAFF_ONLY !== 'true') {
   problems.push('Set VITE_STAFF_ONLY=true for the first staff-only release.');
 }
 
+if (process.env.VITE_INVENTORY_ONLY !== 'true') {
+  problems.push('Set VITE_INVENTORY_ONLY=true for the first inventory-only release.');
+}
+
 for (const name of required) {
   if (!process.env[name]?.trim()) problems.push(`Set ${name}.`);
 }

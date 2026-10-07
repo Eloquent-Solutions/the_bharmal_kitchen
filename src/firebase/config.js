@@ -16,6 +16,7 @@ if (!['demo', 'firebase'].includes(dataMode)) {
 }
 export const isDemoMode = dataMode === 'demo';
 export const isStaffOnly = import.meta.env.VITE_STAFF_ONLY === 'true';
+export const isInventoryOnly = import.meta.env.VITE_INVENTORY_ONLY === 'true';
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,

@@ -9,6 +9,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
+import { isInventoryOnly } from '../../firebase/config';
 import {
   Search, Bell, Menu, LogOut, User, Settings,
   ChevronRight, Moon, Sun, HelpCircle,
@@ -47,7 +48,7 @@ export default function TopBar({ onMobileMenuToggle }) {
   // Keyboard shortcut: Ctrl+K for search
   useEffect(() => {
     function handleKeyDown(e) {
-      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+      if (!isInventoryOnly && (e.metaKey || e.ctrlKey) && e.key === 'k') {
         e.preventDefault();
         setSearchOpen(true);
         setTimeout(() => searchRef.current?.focus(), 100);
@@ -108,7 +109,7 @@ export default function TopBar({ onMobileMenuToggle }) {
 
       <div className="topbar-right">
         {/* Global Search */}
-        <div className="topbar-search">
+        {!isInventoryOnly && <div className="topbar-search">
           <button
             className="topbar-search-trigger btn-ghost btn-icon"
             onClick={() => {
@@ -143,10 +144,10 @@ export default function TopBar({ onMobileMenuToggle }) {
               />
             </div>
           )}
-        </div>
+        </div>}
 
         {/* Notifications */}
-        <div className="topbar-notifications" ref={notifRef}>
+        {!isInventoryOnly && <div className="topbar-notifications" ref={notifRef}>
           <button
             className="topbar-notif-btn btn-ghost btn-icon relative"
             onClick={() => setNotificationsOpen(!notificationsOpen)}
@@ -170,7 +171,7 @@ export default function TopBar({ onMobileMenuToggle }) {
               </div>
             </div>
           )}
-        </div>
+        </div>}
 
         {/* User Profile Dropdown */}
         <div className="topbar-profile" ref={profileRef}>
@@ -200,7 +201,7 @@ export default function TopBar({ onMobileMenuToggle }) {
                 </div>
               </div>
               <div className="dropdown-divider" />
-              <button
+              {!isInventoryOnly && <button
                 className="dropdown-item"
                 onClick={() => {
                   setProfileOpen(false);
@@ -209,8 +210,8 @@ export default function TopBar({ onMobileMenuToggle }) {
               >
                 <User size={16} />
                 <span>Profile</span>
-              </button>
-              <button
+              </button>}
+              {!isInventoryOnly && <button
                 className="dropdown-item"
                 onClick={() => {
                   setProfileOpen(false);
@@ -219,11 +220,11 @@ export default function TopBar({ onMobileMenuToggle }) {
               >
                 <Settings size={16} />
                 <span>Settings</span>
-              </button>
-              <button className="dropdown-item">
+              </button>}
+              {!isInventoryOnly && <button className="dropdown-item">
                 <HelpCircle size={16} />
                 <span>Help & Support</span>
-              </button>
+              </button>}
               <div className="dropdown-divider" />
               <button className="dropdown-item dropdown-item-danger" onClick={handleSignOut}>
                 <LogOut size={16} />

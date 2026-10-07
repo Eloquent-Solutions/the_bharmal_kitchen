@@ -23,6 +23,8 @@ import {
 } from '../../services/dataService';
 import { formatCurrency, formatRecordId } from '../../utils/formatters';
 import toast from 'react-hot-toast';
+import { isDemoMode, isInventoryOnly } from '../../firebase/config';
+import { saveUtensilCloud } from '../../services/inventoryCloud';
 
 export default function UtensilsPage() {
   const [utensils, setUtensils] = useState([]);
@@ -31,6 +33,7 @@ export default function UtensilsPage() {
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [editingUtensil, setEditingUtensil] = useState(null);
   const [utensilToDelete, setUtensilToDelete] = useState(null);
+  const [saving, setSaving] = useState(false);
 
   const [formData, setFormData] = useState({
     name: '',
@@ -55,6 +58,7 @@ export default function UtensilsPage() {
   const handleOpenAdd = () => {
     setEditingUtensil(null);
     setFormData({
+      id: `UTN-${crypto.randomUUID()}`,
       name: '',
       category: 'Cookware',
       totalQty: 10,
@@ -85,7 +89,7 @@ export default function UtensilsPage() {
     setIsDeleteModalOpen(true);
   };
 
-  const handleSave = (e) => {
+  const handleSave = async (e) => {
     e.preventDefault();
     if (!formData.name.trim()) {
       toast.error('Utensil name is required');
@@ -101,6 +105,7 @@ export default function UtensilsPage() {
 
     const payload = {
       ...(editingUtensil || {}),
+      id: editingUtensil?.id || formData.id,
       name: formData.name.trim(),
       category: formData.category,
       totalQty: Number(formData.totalQty) || 0,
@@ -110,10 +115,20 @@ export default function UtensilsPage() {
       condition: formData.condition,
     };
 
-    const updated = saveUtensil(payload);
-    setUtensils(updated);
-    setIsModalOpen(false);
-    toast.success(editingUtensil ? 'Utensil updated successfully!' : 'New utensil added to inventory!');
+    setSaving(true);
+    try {
+      if (isInventoryOnly && !isDemoMode) {
+        await saveUtensilCloud(payload, editingUtensil);
+      } else {
+        setUtensils(saveUtensil(payload));
+      }
+      setIsModalOpen(false);
+      toast.success(editingUtensil ? 'Utensil updated successfully!' : 'New utensil added to inventory!');
+    } catch (error) {
+      toast.error(error.message);
+    } finally {
+      setSaving(false);
+    }
   };
 
   const confirmDelete = () => {
@@ -206,14 +221,14 @@ export default function UtensilsPage() {
                       >
                         <Edit2 size={14} />
                       </button>
-                      <button
+                      {!isInventoryOnly && <button
                         className="btn-icon"
                         onClick={() => handleOpenDelete(u)}
                         title="Delete Utensil"
                         style={{ color: 'var(--color-danger)' }}
                       >
                         <Trash2 size={14} />
-                      </button>
+                      </button>}
                     </div>
                   </td>
                 </tr>
@@ -319,7 +334,7 @@ export default function UtensilsPage() {
 
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 'var(--space-2)', marginTop: 'var(--space-2)' }}>
                 <button type="button" className="btn btn-secondary" onClick={() => setIsModalOpen(false)}>Cancel</button>
-                <button type="submit" className="btn btn-primary">{editingUtensil ? 'Save Changes' : 'Create Asset'}</button>
+                <button type="submit" className="btn btn-primary" disabled={saving}>{editingUtensil ? 'Save Changes' : 'Create Asset'}</button>
               </div>
             </form>
           </div>

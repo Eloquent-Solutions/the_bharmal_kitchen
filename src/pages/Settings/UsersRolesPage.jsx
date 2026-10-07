@@ -28,11 +28,14 @@ import {
 } from '../../services/dataService';
 import { NAVIGATION } from '../../constants/navigation';
 import { ROLES } from '../../constants/roles';
-import { isDemoMode } from '../../firebase/config';
+import { isDemoMode, isInventoryOnly } from '../../firebase/config';
+import { INVENTORY_RELEASE_TABS } from '../../constants/inventoryRelease';
+import { saveUserAccessCloud } from '../../services/inventoryCloud';
 import toast from 'react-hot-toast';
 
 // All available tab IDs from the navigation
-const ALL_TAB_IDS = NAVIGATION.map((n) => n.id);
+const VISIBLE_NAVIGATION = isInventoryOnly ? NAVIGATION.filter((n) => INVENTORY_RELEASE_TABS.has(n.id)) : NAVIGATION;
+const ALL_TAB_IDS = VISIBLE_NAVIGATION.map((n) => n.id);
 
 const ROLE_OPTIONS = Object.values(ROLES);
 
@@ -59,6 +62,7 @@ export default function UsersRolesPage() {
   const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState(null);
   const [userToDelete, setUserToDelete] = useState(null);
+  const [saving, setSaving] = useState(false);
 
   const [formData, setFormData] = useState({
     name: '',
@@ -84,6 +88,13 @@ export default function UsersRolesPage() {
 
   // Get default tabs for a role
   const getDefaultTabsForRole = (role) => {
+    if (isInventoryOnly) {
+      if (['Owner', 'Admin', 'Manager'].includes(role)) return [...ALL_TAB_IDS];
+      if (role === 'Inventory Manager') return ['inventory', 'purchasing', 'reports'];
+      if (role === 'Chef') return ['inventory'];
+      if (role === 'Accountant') return ['reports'];
+      return [];
+    }
     switch (role) {
       case 'Owner':
       case 'Admin':
@@ -158,7 +169,7 @@ export default function UsersRolesPage() {
     }
   };
 
-  const handleSave = (e) => {
+  const handleSave = async (e) => {
     e.preventDefault();
     if (!formData.name.trim() || !formData.email.trim()) {
       toast.error('Name and Email are required');
@@ -177,16 +188,22 @@ export default function UsersRolesPage() {
       updatedAt: new Date().toISOString(),
     };
 
-    const updated = saveUser(payload);
-    setUsers(updated);
-    setIsModalOpen(false);
-    toast.success(
-      isAwaiting
+    setSaving(true);
+    try {
+      if (isInventoryOnly && !isDemoMode) {
+        await saveUserAccessCloud(payload);
+      } else {
+        setUsers(saveUser(payload));
+      }
+      setIsModalOpen(false);
+      toast.success(isAwaiting
         ? `Role "${formData.role}" assigned & user activated!`
-        : editingUser
-        ? 'User profile updated!'
-        : 'User created successfully!'
-    );
+        : editingUser ? 'User profile updated!' : 'User created successfully!');
+    } catch (error) {
+      toast.error(error.message);
+    } finally {
+      setSaving(false);
+    }
   };
 
   const confirmDelete = () => {
@@ -198,11 +215,21 @@ export default function UsersRolesPage() {
     toast.success('User access revoked & removed');
   };
 
-  const toggleStatus = (u) => {
+  const toggleStatus = async (u) => {
     const newStatus = u.status === 'active' ? 'suspended' : 'active';
-    const updated = saveUser({ ...u, status: newStatus });
-    setUsers(updated);
-    toast.success(`User ${u.name} ${newStatus === 'active' ? 'reactivated' : 'suspended'}`);
+    setSaving(true);
+    try {
+      if (isInventoryOnly && !isDemoMode) {
+        await saveUserAccessCloud({ ...u, status: newStatus });
+      } else {
+        setUsers(saveUser({ ...u, status: newStatus }));
+      }
+      toast.success(`User ${u.name} ${newStatus === 'active' ? 'reactivated' : 'suspended'}`);
+    } catch (error) {
+      toast.error(error.message);
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleSendInvite = (e) => {
@@ -240,7 +267,7 @@ export default function UsersRolesPage() {
 
   const TabGrid = ({ selectedTabs, onToggle }) => (
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: '6px', marginTop: '4px' }}>
-      {NAVIGATION.map((nav) => {
+      {VISIBLE_NAVIGATION.map((nav) => {
         const isSelected = selectedTabs.includes(nav.id);
         return (
           <button
@@ -389,6 +416,7 @@ export default function UsersRolesPage() {
                           className={`badge ${u.status === 'active' ? 'badge-success' : 'badge-danger'}`}
                           style={{ cursor: 'pointer', border: 'none' }}
                           onClick={() => toggleStatus(u)}
+                          disabled={saving}
                         >
                           {u.status === 'active' ? '● Active' : '✕ Suspended'}
                         </button>
@@ -406,7 +434,7 @@ export default function UsersRolesPage() {
                           </button>
                         )}
                         <button className="btn-icon" onClick={() => handleOpenEdit(u)} title="Edit"><Edit2 size={14} /></button>
-                        <button className="btn-icon" onClick={() => handleOpenDelete(u)} title="Delete" style={{ color: 'var(--color-danger)' }}><Trash2 size={14} /></button>
+                        {!isInventoryOnly && <button className="btn-icon" onClick={() => handleOpenDelete(u)} title="Delete" style={{ color: 'var(--color-danger)' }}><Trash2 size={14} /></button>}
                       </div>
                     </td>
                   </tr>
@@ -433,14 +461,14 @@ export default function UsersRolesPage() {
                 </div>
                 <div>
                   <label className="label">Email *</label>
-                  <input type="email" required className="input" value={formData.email} onChange={(e) => setFormData({ ...formData, email: e.target.value })} />
+                  <input type="email" required className="input" disabled={isInventoryOnly} value={formData.email} onChange={(e) => setFormData({ ...formData, email: e.target.value })} />
                 </div>
               </div>
 
               <div>
                 <label className="label">Assigned Role</label>
                 <select className="input" value={formData.role} onChange={(e) => handleRoleChange(e.target.value)}>
-                  {ROLE_OPTIONS.map((r) => <option key={r} value={r}>{r}</option>)}
+                  {(isInventoryOnly ? ROLE_OPTIONS.filter((r) => ['Owner', 'Manager', 'Inventory Manager', 'Chef', 'Accountant'].includes(r) || r === formData.role) : ROLE_OPTIONS).map((r) => <option key={r} value={r}>{r}</option>)}
                 </select>
                 <p style={{ fontSize: '10px', color: 'var(--text-tertiary)', marginTop: '4px' }}>
                   {ROLE_DESCRIPTIONS[formData.role] || ''}
@@ -457,7 +485,7 @@ export default function UsersRolesPage() {
 
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 'var(--space-2)', marginTop: 'var(--space-2)' }}>
                 <button type="button" className="btn btn-secondary" onClick={() => setIsModalOpen(false)}>Cancel</button>
-                <button type="submit" className="btn btn-primary">{editingUser ? 'Save Changes' : 'Create User'}</button>
+                <button type="submit" className="btn btn-primary" disabled={saving}>{editingUser ? 'Save Changes' : 'Create User'}</button>
               </div>
             </form>
           </div>

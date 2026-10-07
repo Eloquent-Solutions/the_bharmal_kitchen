@@ -11,7 +11,8 @@ import { createBrowserRouter, Navigate } from 'react-router-dom';
 import AppLayout from '../layouts/AppLayout';
 import AuthLayout from '../layouts/AuthLayout';
 import { useAuth } from '../hooks/useAuth';
-import { isStaffOnly } from '../firebase/config';
+import { isStaffOnly, isInventoryOnly } from '../firebase/config';
+import { INVENTORY_HOME } from '../constants/inventoryRelease';
 
 // ─── Lazy-loaded Pages ─────────────────────────────────────
 
@@ -131,7 +132,7 @@ function RootRoute() {
   if (loading) return <PageLoader />;
   if (!user) return <Navigate to={isStaffOnly ? '/login' : '/order'} replace />;
   if (isCustomer) return <Navigate to={isStaffOnly ? '/access-pending' : '/order'} replace />;
-  return <Navigate to="/dashboard" replace />;
+  return <Navigate to={isInventoryOnly ? INVENTORY_HOME : '/dashboard'} replace />;
 }
 
 function StaffOnlyRoute({ children }) {
@@ -140,7 +141,7 @@ function StaffOnlyRoute({ children }) {
   if (loading) return <PageLoader />;
   if (!user) return <Navigate to="/login" replace />;
   if (isCustomer) return <Navigate to="/access-pending" replace />;
-  return <Navigate to="/dashboard" replace />;
+  return <Navigate to={isInventoryOnly ? INVENTORY_HOME : '/dashboard'} replace />;
 }
 
 function AccessPendingRoute() {
@@ -148,7 +149,7 @@ function AccessPendingRoute() {
   if (!isStaffOnly) return <Navigate to="/order" replace />;
   if (loading) return <PageLoader />;
   if (!user) return <Navigate to="/login" replace />;
-  if (!isCustomer) return <Navigate to="/dashboard" replace />;
+  if (!isCustomer) return <Navigate to={isInventoryOnly ? INVENTORY_HOME : '/dashboard'} replace />;
   return (
     <div className="loading-screen">
       <h2>Staff access is pending</h2>
@@ -246,7 +247,7 @@ export const router = createBrowserRouter([
       { path: '/finance/day-close', element: <SuspenseWrap><DayClosePage /></SuspenseWrap> },
 
       // Reports
-      { path: '/reports', element: <Navigate to="/reports/sales" replace /> },
+      { path: '/reports', element: <Navigate to={isInventoryOnly ? '/reports/inventory' : '/reports/sales'} replace /> },
       { path: '/reports/sales', element: <SuspenseWrap><SalesReportPage /></SuspenseWrap> },
       { path: '/reports/orders', element: <SuspenseWrap><OrderReportsPage /></SuspenseWrap> },
       { path: '/reports/inventory', element: <SuspenseWrap><InventoryReportsPage /></SuspenseWrap> },
@@ -263,7 +264,7 @@ export const router = createBrowserRouter([
       { path: '/printing/queue', element: <SuspenseWrap><PrintQueuePage /></SuspenseWrap> },
 
       // Settings
-      { path: '/settings', element: <Navigate to="/settings/restaurant" replace /> },
+      { path: '/settings', element: <Navigate to={isInventoryOnly ? '/settings/users' : '/settings/restaurant'} replace /> },
       { path: '/settings/restaurant', element: <SuspenseWrap><RestaurantSettingsPage /></SuspenseWrap> },
       { path: '/settings/branches', element: <SuspenseWrap><BranchesPage /></SuspenseWrap> },
       { path: '/settings/pos', element: <SuspenseWrap><POSSettingsPage /></SuspenseWrap> },
@@ -286,8 +287,8 @@ export const router = createBrowserRouter([
         <p style={{ color: 'var(--text-tertiary)' }}>
           The page you're looking for doesn't exist.
         </p>
-        <a href="/dashboard" className="btn btn-primary" style={{ marginTop: '16px' }}>
-          Go to Dashboard
+        <a href={isInventoryOnly ? INVENTORY_HOME : '/dashboard'} className="btn btn-primary" style={{ marginTop: '16px' }}>
+          Go to {isInventoryOnly ? 'Inventory' : 'Dashboard'}
         </a>
       </div>
     ),

@@ -312,7 +312,7 @@ export function AuthProvider({ children }) {
     if (!db || !state.user || state.isDemoSession || state.role === ROLES.CUSTOMER) return;
     let cancelled = false;
     let stopSync = () => {};
-    initializeFirebaseDataSync(() => cancelled).then((unsubscribe) => {
+    initializeFirebaseDataSync(() => cancelled, state.role).then((unsubscribe) => {
       if (cancelled) unsubscribe?.();
       else stopSync = unsubscribe || stopSync;
     }).catch((err) => console.warn('Firebase data sync failed:', err));

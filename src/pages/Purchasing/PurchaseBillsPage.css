@@ -1,0 +1,25 @@
+.purchase-bill-line {
+  display: grid;
+  grid-template-columns: minmax(85px, 1fr) minmax(135px, 1.5fr) 74px 84px 66px 24px;
+  gap: 6px;
+  align-items: center;
+  min-width: 0;
+}
+
+.purchase-bill-line > * {
+  min-width: 0;
+}
+
+.purchase-bill-line .input {
+  width: 100%;
+}
+
+@media (max-width: 720px) {
+  .purchase-bill-line {
+    grid-template-columns: repeat(3, minmax(0, 1fr)) 24px;
+  }
+
+  .purchase-bill-line > :nth-child(2) {
+    grid-column: 2 / 5;
+  }
+}

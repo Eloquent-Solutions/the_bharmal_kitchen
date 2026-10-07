@@ -23,6 +23,8 @@ import {
   deleteSupplier,
 } from '../../services/dataService';
 import toast from 'react-hot-toast';
+import { isDemoMode, isInventoryOnly } from '../../firebase/config';
+import { saveSupplierCloud } from '../../services/inventoryCloud';
 
 export default function SuppliersPage() {
   const [suppliers, setSuppliers] = useState([]);
@@ -31,6 +33,7 @@ export default function SuppliersPage() {
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [toDelete, setToDelete] = useState(null);
+  const [saving, setSaving] = useState(false);
 
   const [formData, setFormData] = useState({
     name: '',
@@ -46,6 +49,8 @@ export default function SuppliersPage() {
 
   useEffect(() => {
     refreshData();
+    window.addEventListener('tbk_suppliers_updated', refreshData);
+    return () => window.removeEventListener('tbk_suppliers_updated', refreshData);
   }, []);
 
   const refreshData = () => {
@@ -54,7 +59,7 @@ export default function SuppliersPage() {
 
   const handleOpenAdd = () => {
     setEditing(null);
-    setFormData({ name: '', contactPerson: '', phone: '', email: '', address: '', gstNumber: '', category: 'General', outstandingBalance: 0, notes: '' });
+    setFormData({ id: `SUP-${crypto.randomUUID()}`, name: '', contactPerson: '', phone: '', email: '', address: '', gstNumber: '', category: 'General', outstandingBalance: 0, notes: '' });
     setIsModalOpen(true);
   };
 
@@ -79,7 +84,7 @@ export default function SuppliersPage() {
     setIsDeleteModalOpen(true);
   };
 
-  const handleSave = (e) => {
+  const handleSave = async (e) => {
     e.preventDefault();
     if (!formData.name.trim()) {
       toast.error('Supplier name is required');
@@ -89,14 +94,25 @@ export default function SuppliersPage() {
     const payload = {
       ...(editing || {}),
       ...formData,
+      id: editing?.id || formData.id,
       name: formData.name.trim(),
       outstandingBalance: Number(formData.outstandingBalance) || 0,
     };
 
-    const updated = saveSupplier(payload);
-    setSuppliers(updated);
-    setIsModalOpen(false);
-    toast.success(editing ? 'Supplier updated!' : 'New supplier added!');
+    setSaving(true);
+    try {
+      if (isInventoryOnly && !isDemoMode) {
+        await saveSupplierCloud(payload, editing);
+      } else {
+        setSuppliers(saveSupplier(payload));
+      }
+      setIsModalOpen(false);
+      toast.success(editing ? 'Supplier updated!' : 'New supplier added!');
+    } catch (error) {
+      toast.error(error.message);
+    } finally {
+      setSaving(false);
+    }
   };
 
   const confirmDelete = () => {
@@ -167,7 +183,7 @@ export default function SuppliersPage() {
               </div>
               <div style={{ display: 'flex', gap: '6px' }}>
                 <button className="btn-icon" onClick={() => handleOpenEdit(s)}><Edit2 size={14} /></button>
-                <button className="btn-icon" onClick={() => handleOpenDelete(s)} style={{ color: 'var(--color-danger)' }}><Trash2 size={14} /></button>
+                {!isInventoryOnly && <button className="btn-icon" onClick={() => handleOpenDelete(s)} style={{ color: 'var(--color-danger)' }}><Trash2 size={14} /></button>}
               </div>
             </div>
 
@@ -261,7 +277,7 @@ export default function SuppliersPage() {
 
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 'var(--space-2)' }}>
                 <button type="button" className="btn btn-secondary" onClick={() => setIsModalOpen(false)}>Cancel</button>
-                <button type="submit" className="btn btn-primary">{editing ? 'Update' : 'Add Supplier'}</button>
+                <button type="submit" className="btn btn-primary" disabled={saving}>{editing ? 'Update' : 'Add Supplier'}</button>
               </div>
             </form>
           </div>

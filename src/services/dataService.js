@@ -18,36 +18,47 @@ import {
   serverTimestamp,
   onSnapshot,
 } from 'firebase/firestore';
-import { db, isDemoMode } from '../firebase/config';
+import { auth, db, isDemoMode, isInventoryOnly } from '../firebase/config';
 import { formatRecordId } from '../utils/recordIds';
 
 const inventoryId = (prefix) => `${prefix}-${crypto.randomUUID()}`;
+let inventorySyncState = { ready: false, error: null };
+
+export function getInventorySyncState() {
+  return inventorySyncState;
+}
+
+function updateInventorySyncState(next) {
+  inventorySyncState = { ...inventorySyncState, ...next };
+  if (isInventoryOnly) window.dispatchEvent(new CustomEvent('tbk_inventory_sync_state', { detail: inventorySyncState }));
+}
 
 /**
  * Auto-synchronize Firestore remote collections into local reactive stores on load
  */
-export async function initializeFirebaseDataSync(shouldStop = () => false) {
+export async function initializeFirebaseDataSync(shouldStop = () => false, role = '') {
   if (!db) return;
+  if (isInventoryOnly) updateInventorySyncState({ ready: false, error: null });
   const collectionsToSync = [
     { col: 'menu_items', key: 'tbk_menu_items', event: 'tbk_menu_items_updated' },
     { col: 'categories', key: 'tbk_categories', event: 'tbk_categories_updated' },
     { col: 'combos', key: 'tbk_combos', event: 'tbk_combos_updated' },
     { col: 'modifiers', key: 'tbk_modifiers', event: 'tbk_modifiers_updated' },
-    { col: 'recipes', key: 'tbk_recipes', event: 'tbk_recipes_updated' },
-    { col: 'raw_materials', key: 'tbk_raw_materials', event: 'tbk_raw_materials_updated' },
-    { col: 'utensils', key: 'tbk_utensils', event: 'tbk_utensils_updated' },
+    { col: 'recipes', key: 'tbk_recipes', event: 'tbk_recipes_updated', realtime: true },
+    { col: 'raw_materials', key: 'tbk_raw_materials', event: 'tbk_raw_materials_updated', realtime: true },
+    { col: 'utensils', key: 'tbk_utensils', event: 'tbk_utensils_updated', realtime: true },
     { col: 'orders', key: 'tbk_orders', event: 'tbk_order_changed', realtime: true },
     { col: 'tables', key: 'tbk_tables', event: 'tbk_tables_updated', realtime: true },
     { col: 'staff', key: 'tbk_staff', event: 'tbk_staff_updated' },
     { col: 'branches', key: 'tbk_branches', event: 'tbk_branches_updated' },
     { col: 'users', key: 'tbk_users', event: 'tbk_users_updated', realtime: true },
-    { col: 'suppliers', key: 'tbk_suppliers', event: 'tbk_suppliers_updated' },
+    { col: 'suppliers', key: 'tbk_suppliers', event: 'tbk_suppliers_updated', realtime: true },
     { col: 'supply_categories', key: 'tbk_supply_categories', event: 'tbk_supply_categories_updated' },
     { col: 'kitchen_stations', key: 'tbk_kitchen_stations', event: 'tbk_kitchen_stations_updated' },
-    { col: 'purchase_bills', key: 'tbk_purchase_bills', event: 'tbk_purchase_bills_updated' },
+    { col: 'purchase_bills', key: 'tbk_purchase_bills', event: 'tbk_purchase_bills_updated', realtime: true },
     { col: 'purchase_orders', key: 'tbk_purchase_orders', event: 'tbk_purchase_orders_updated' },
-    { col: 'stock_movements', key: 'tbk_stock_movements', event: 'tbk_stock_movements_updated' },
-    { col: 'wastage', key: 'tbk_wastage', event: 'tbk_wastage_updated' },
+    { col: 'stock_movements', key: 'tbk_stock_movements', event: 'tbk_stock_movements_updated', realtime: true },
+    { col: 'wastage', key: 'tbk_wastage', event: 'tbk_wastage_updated', realtime: true },
     { col: 'promotions', key: 'tbk_promotions', event: 'tbk_promotions_updated' },
     { col: 'kots', key: 'tbk_kots', event: 'tbk_kots_updated', realtime: true },
     { col: 'printers', key: 'tbk_printers', event: 'tbk_printers_updated' },
@@ -79,14 +90,14 @@ export async function initializeFirebaseDataSync(shouldStop = () => false) {
     { id: 'loyalty', key: 'tbk_loyalty_tiers' },
   ];
 
-  for (const s of settingsDocs) {
+  for (const s of (isInventoryOnly ? [] : settingsDocs)) {
     if (shouldStop()) return () => {};
     try {
       const snap = await getDoc(doc(db, 'settings', s.id));
       if (shouldStop()) return () => {};
       if (snap.exists()) {
         const val = snap.data();
-        localStorage.setItem(s.key, JSON.stringify(val));
+        localStorage.setItem(storageKey(s.key), JSON.stringify(val));
       }
     } catch (e) {
       // Ignore initial read note
@@ -95,7 +106,17 @@ export async function initializeFirebaseDataSync(shouldStop = () => false) {
 
   const unsubscribers = [];
 
-  for (const item of collectionsToSync) {
+  const inventoryCollections = new Set(
+    ['Owner', 'Admin', 'Manager', 'Chef', 'Kitchen Staff', 'Inventory Manager', 'Accountant'].includes(role)
+      ? ['raw_materials', 'utensils', 'stock_movements', 'wastage']
+      : []
+  );
+  if (['Owner', 'Admin', 'Manager', 'Inventory Manager'].includes(role)) {
+    inventoryCollections.add('suppliers');
+    inventoryCollections.add('purchase_bills');
+  }
+  if (['Owner', 'Admin'].includes(role)) inventoryCollections.add('users');
+  for (const item of (isInventoryOnly ? collectionsToSync.filter(({ col }) => inventoryCollections.has(col)) : collectionsToSync)) {
     if (shouldStop()) break;
     try {
       const snap = await getDocs(collection(db, item.col));
@@ -104,7 +125,7 @@ export async function initializeFirebaseDataSync(shouldStop = () => false) {
       snap.forEach((d) => {
         remoteData.push({ id: d.id, ...d.data() });
       });
-      localStorage.setItem(item.key, JSON.stringify(remoteData));
+      localStorage.setItem(storageKey(item.key), JSON.stringify(remoteData));
       try {
         window.dispatchEvent(new CustomEvent(item.event, { detail: remoteData }));
       } catch (e) { }
@@ -115,20 +136,24 @@ export async function initializeFirebaseDataSync(shouldStop = () => false) {
           if (shouldStop()) return;
           const liveData = [];
           snapshot.forEach((d) => liveData.push({ id: d.id, ...d.data() }));
-          localStorage.setItem(item.key, JSON.stringify(liveData));
+          localStorage.setItem(storageKey(item.key), JSON.stringify(liveData));
           try {
             window.dispatchEvent(new CustomEvent(item.event, { detail: liveData }));
           } catch (e) { }
         }, (err) => {
+          if (shouldStop()) return;
           console.warn(`Realtime onSnapshot (${item.col}):`, err.message);
+          if (isInventoryOnly) updateInventorySyncState({ ready: false, error: `Could not synchronize ${item.col}.` });
         });
         unsubscribers.push(unsubscribe);
       }
     } catch (e) {
       console.warn(`Initial sync for ${item.col} note:`, e.message);
+      if (isInventoryOnly) updateInventorySyncState({ ready: false, error: `Could not synchronize ${item.col}.` });
     }
   }
 
+  if (isInventoryOnly && !shouldStop() && !inventorySyncState.error) updateInventorySyncState({ ready: true });
   return () => unsubscribers.forEach((unsubscribe) => unsubscribe());
 }
 
@@ -780,21 +805,27 @@ export const DEFAULT_LOYALTY_TIERS = [
 
 // ─── Storage & Firestore Synchronization Engine ──────────────
 
+function storageKey(key) {
+  return isInventoryOnly && !isDemoMode
+    ? `tbk:${import.meta.env.VITE_FIREBASE_PROJECT_ID}:${auth?.currentUser?.uid || 'anonymous'}:${key}`
+    : key;
+}
+
 function getStored(key, defaultVal) {
   try {
-    const raw = localStorage.getItem(key);
+    const raw = localStorage.getItem(storageKey(key));
     if (raw) return JSON.parse(raw);
   } catch (e) {
     console.warn(`Local reading error (${key}):`, e);
   }
   const initialValue = !isDemoMode && Array.isArray(defaultVal) ? [] : defaultVal;
-  if (initialValue !== undefined) localStorage.setItem(key, JSON.stringify(initialValue));
+  if (initialValue !== undefined) localStorage.setItem(storageKey(key), JSON.stringify(initialValue));
   return initialValue;
 }
 
 function setStored(key, val) {
   try {
-    localStorage.setItem(key, JSON.stringify(val));
+    localStorage.setItem(storageKey(key), JSON.stringify(val));
   } catch (e) {
     console.error(`Local save error (${key}):`, e);
   }

@@ -5,7 +5,7 @@
  * Loads raw materials from Firebase dataService for physical count reconciliation.
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   ClipboardCheck,
   Search,
@@ -17,11 +17,16 @@ import {
 import { getRawMaterials, reconcileAllPhysicalStock, logAuditEvent } from '../../services/dataService';
 import { formatRecordId } from '../../utils/formatters';
 import toast from 'react-hot-toast';
+import { isDemoMode, isInventoryOnly } from '../../firebase/config';
+import { reconcilePhysicalStockCloud } from '../../services/inventoryCloud';
 
 export default function StockCountPage() {
   const [items, setItems] = useState([]);
+  const [saving, setSaving] = useState(false);
+  const countTouched = useRef(false);
 
   const loadItems = () => {
+    countTouched.current = false;
     const rawMaterials = getRawMaterials();
     // Map raw materials into audit-ready rows with system stock values
     const auditItems = rawMaterials.map((rm) => ({
@@ -37,30 +42,40 @@ export default function StockCountPage() {
 
   useEffect(() => {
     loadItems();
-    const handleUpdate = () => loadItems();
+    const handleUpdate = () => {
+      if (!countTouched.current) loadItems();
+    };
     window.addEventListener('tbk_raw_materials_updated', handleUpdate);
     return () => window.removeEventListener('tbk_raw_materials_updated', handleUpdate);
   }, []);
 
   const handleCountChange = (id, val) => {
+    countTouched.current = true;
     setItems((prev) =>
       prev.map((item) => (item.id === id ? { ...item, countedStock: val } : item))
     );
   };
 
-  const handleReconcileAll = () => {
+  const handleReconcileAll = async () => {
+    setSaving(true);
     try {
-      reconcileAllPhysicalStock(items);
+      if (isInventoryOnly && !isDemoMode) {
+        await reconcilePhysicalStockCloud(items);
+      } else {
+        reconcileAllPhysicalStock(items);
+        logAuditEvent({
+          action: 'Physical Stock Reconciled',
+          user: 'Manager',
+          details: `Reconciled ${items.length} raw material items against physical count`,
+          ip: 'Inventory Terminal',
+        });
+      }
       loadItems();
-      logAuditEvent({
-        action: 'Physical Stock Reconciled',
-        user: 'Manager',
-        details: `Reconciled ${items.length} raw material items against physical count`,
-        ip: 'Inventory Terminal',
-      });
       toast.success('Physical count reconciled! Inventory system balances updated.');
     } catch (error) {
       toast.error(error.message);
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -78,7 +93,7 @@ export default function StockCountPage() {
           <button className="btn btn-secondary" onClick={loadItems}>
             <RotateCcw size={16} /> Reload Current Stock
           </button>
-          <button className="btn btn-primary" onClick={handleReconcileAll}>
+          <button className="btn btn-primary" onClick={handleReconcileAll} disabled={saving}>
             <Save size={16} /> Reconcile Stock Discrepancies
           </button>
         </div>

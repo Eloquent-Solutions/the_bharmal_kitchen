@@ -10,6 +10,8 @@ import { useState, useCallback } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import { NAVIGATION } from '../../constants/navigation';
+import { INVENTORY_RELEASE_TABS } from '../../constants/inventoryRelease';
+import { isInventoryOnly } from '../../firebase/config';
 import {
   LayoutDashboard, ShoppingCart, ClipboardList, ChefHat,
   Grid3X3, UtensilsCrossed, Package, Truck, Users,
@@ -37,17 +39,21 @@ export default function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose
 
   // Filter top-level items by permission & admin-configured allowedTabs
   const filteredNav = NAVIGATION.filter((item) =>
-    hasAnyPermission(item.permissions) && isTabAllowed(item.id)
+    (!isInventoryOnly || INVENTORY_RELEASE_TABS.has(item.id))
+    && hasAnyPermission(item.permissions)
+    && isTabAllowed(item.id)
   ).map((item) => {
     if (item.children && item.children.length > 0) {
-      const allowedChildren = item.children.filter((child) => isTabAllowed(child.id));
+      const allowedChildren = item.children.filter((child) =>
+        (!isInventoryOnly || INVENTORY_RELEASE_TABS.has(child.id)) && isTabAllowed(child.id)
+      );
       return {
         ...item,
-        children: allowedChildren.length > 0 ? allowedChildren : item.children,
+        children: isInventoryOnly ? allowedChildren : allowedChildren.length > 0 ? allowedChildren : item.children,
       };
     }
     return item;
-  });
+  }).filter((item) => !item.children || item.children.length > 0);
 
   return (
     <>

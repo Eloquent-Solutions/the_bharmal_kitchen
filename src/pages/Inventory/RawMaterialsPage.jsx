@@ -29,6 +29,8 @@ import {
 } from '../../services/dataService';
 import { formatCurrency, formatRecordId } from '../../utils/formatters';
 import toast from 'react-hot-toast';
+import { isDemoMode, isInventoryOnly } from '../../firebase/config';
+import { saveRawMaterialCloud, adjustRawMaterialStockCloud } from '../../services/inventoryCloud';
 
 export default function RawMaterialsPage() {
   const [materials, setMaterials] = useState([]);
@@ -36,9 +38,11 @@ export default function RawMaterialsPage() {
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [adjustingItem, setAdjustingItem] = useState(null);
   const [adjustQty, setAdjustQty] = useState('');
+  const [adjustmentId, setAdjustmentId] = useState(null);
   const [adjustType, setAdjustType] = useState('add');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [editingMat, setEditingMat] = useState(null);
+  const [saving, setSaving] = useState(false);
 
   const [formData, setFormData] = useState({
     name: '',
@@ -72,26 +76,32 @@ export default function RawMaterialsPage() {
     return matchesCategory && matchesSearch;
   });
 
-  const handleAdjustStock = (e) => {
+  const handleAdjustStock = async (e) => {
     e.preventDefault();
     const qty = Number(adjustQty);
+    setSaving(true);
     try {
-      const updated = adjustRawMaterialStock(
-        adjustingItem.id, qty, adjustType,
-        `Manual ${adjustType === 'add' ? 'Inward Delivery' : 'Outward Spoilage / Correction'}`
-      );
-      setMaterials(updated);
+      const reason = `Manual ${adjustType === 'add' ? 'Inward Delivery' : 'Outward Spoilage / Correction'}`;
+      if (isInventoryOnly && !isDemoMode) {
+        await adjustRawMaterialStockCloud(adjustingItem.id, qty, adjustType, reason, null, undefined, adjustmentId);
+      } else {
+        setMaterials(adjustRawMaterialStock(adjustingItem.id, qty, adjustType, reason));
+      }
       toast.success(`Stock for ${adjustingItem.name} updated successfully!`);
       setAdjustingItem(null);
       setAdjustQty('');
+      setAdjustmentId(null);
     } catch (error) {
       toast.error(error.message);
+    } finally {
+      setSaving(false);
     }
   };
 
   const handleOpenAdd = () => {
     setEditingMat(null);
     setFormData({
+      id: `RM-${crypto.randomUUID()}`,
       name: '',
       category: 'Meat & Poultry',
       currentStock: '',
@@ -117,7 +127,7 @@ export default function RawMaterialsPage() {
     setIsAddModalOpen(true);
   };
 
-  const handleSaveMaterial = (e) => {
+  const handleSaveMaterial = async (e) => {
     e.preventDefault();
     if (!formData.name.trim()) {
       toast.error('Material name is required');
@@ -126,6 +136,7 @@ export default function RawMaterialsPage() {
 
     const payload = {
       ...(editingMat || {}),
+      id: editingMat?.id || formData.id,
       name: formData.name.trim(),
       category: formData.category,
       currentStock: editingMat
@@ -145,13 +156,24 @@ export default function RawMaterialsPage() {
       toast.error('Reorder level and unit cost must be zero or greater.');
       return;
     }
-    const updated = saveRawMaterial(payload);
-    if (!editingMat && payload.currentStock > 0) {
-      addStockMovement({ materialId: updated.at(-1).id, material: payload.name, type: 'inward', qty: payload.currentStock, unit: payload.unit, source: 'Opening Stock', user: 'Inventory Staff' });
+    setSaving(true);
+    try {
+      if (isInventoryOnly && !isDemoMode) {
+        await saveRawMaterialCloud(payload, editingMat);
+      } else {
+        const updated = saveRawMaterial(payload);
+        if (!editingMat && payload.currentStock > 0) {
+          addStockMovement({ materialId: updated.at(-1).id, material: payload.name, type: 'inward', qty: payload.currentStock, unit: payload.unit, source: 'Opening Stock', user: 'Inventory Staff' });
+        }
+        setMaterials(updated);
+      }
+      setIsAddModalOpen(false);
+      toast.success(editingMat ? 'Material updated successfully!' : 'New material created!');
+    } catch (error) {
+      toast.error(error.message);
+    } finally {
+      setSaving(false);
     }
-    setMaterials(updated);
-    setIsAddModalOpen(false);
-    toast.success(editingMat ? 'Material updated successfully!' : 'New material created!');
   };
 
   const handleDelete = (id) => {
@@ -173,7 +195,7 @@ export default function RawMaterialsPage() {
         <div>
           <h2 style={{ fontSize: 'var(--font-2xl)', fontWeight: '700' }}>Raw Materials Inventory</h2>
           <p style={{ color: 'var(--text-secondary)', fontSize: 'var(--font-sm)' }}>
-            Real-time stock ledger, auto-deduction on POS orders, and recipe BOM links.
+            {isInventoryOnly ? 'Track stock balances, deliveries, wastage, and physical counts.' : 'Real-time stock ledger, auto-deduction on POS orders, and recipe BOM links.'}
           </p>
         </div>
         <button className="btn btn-primary" onClick={handleOpenAdd}>
@@ -281,6 +303,7 @@ export default function RawMaterialsPage() {
                           onClick={() => {
                             setAdjustingItem(mat);
                             setAdjustType('add');
+                            setAdjustmentId(`MOV-${crypto.randomUUID()}`);
                           }}
                         >
                           Adjust
@@ -292,14 +315,14 @@ export default function RawMaterialsPage() {
                         >
                           <Edit2 size={14} />
                         </button>
-                        <button
+                        {!isInventoryOnly && <button
                           className="btn-icon"
                           onClick={() => handleDelete(mat.id)}
                           title="Delete Material"
                           style={{ color: 'var(--color-danger)' }}
                         >
                           <Trash2 size={14} />
-                        </button>
+                        </button>}
                       </div>
                     </td>
                   </tr>
@@ -360,7 +383,7 @@ export default function RawMaterialsPage() {
                 <button type="button" className="btn btn-secondary" onClick={() => setAdjustingItem(null)}>
                   Cancel
                 </button>
-                <button type="submit" className="btn btn-primary">
+                <button type="submit" className="btn btn-primary" disabled={saving}>
                   Save Stock Movement
                 </button>
               </div>
@@ -480,7 +503,7 @@ export default function RawMaterialsPage() {
                 <button type="button" className="btn btn-secondary" onClick={() => setIsAddModalOpen(false)}>
                   Cancel
                 </button>
-                <button type="submit" className="btn btn-primary">
+                <button type="submit" className="btn btn-primary" disabled={saving}>
                   {editingMat ? 'Save Changes' : 'Create Material'}
                 </button>
               </div>

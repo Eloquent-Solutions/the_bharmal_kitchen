@@ -16,12 +16,16 @@ import {
 import { formatCurrency, formatDate, formatRecordId } from '../../utils/formatters';
 import { getWastageLogs, saveWastageLog, getRawMaterials } from '../../services/dataService';
 import toast from 'react-hot-toast';
+import { isDemoMode, isInventoryOnly } from '../../firebase/config';
+import { saveWastageCloud } from '../../services/inventoryCloud';
 
 export default function WastagePage() {
   const [wastage, setWastage] = useState([]);
   const [materials, setMaterials] = useState([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [newWastage, setNewWastage] = useState({
+    id: `WST-${crypto.randomUUID()}`,
     materialId: '',
     qty: 1,
     reason: '',
@@ -43,16 +47,23 @@ export default function WastagePage() {
     };
   }, []);
 
-  const handleAddWastage = (e) => {
+  const handleAddWastage = async (e) => {
     e.preventDefault();
+    setSaving(true);
     try {
-      saveWastageLog({ ...newWastage, loggedBy: 'Current User' });
+      if (isInventoryOnly && !isDemoMode) {
+        await saveWastageCloud({ ...newWastage, loggedBy: 'Inventory Staff' });
+      } else {
+        saveWastageLog({ ...newWastage, loggedBy: 'Current User' });
+      }
       setIsModalOpen(false);
-      setNewWastage({ materialId: '', qty: 1, reason: '' });
+      setNewWastage({ id: `WST-${crypto.randomUUID()}`, materialId: '', qty: 1, reason: '' });
       loadWastage();
       toast.success('Wastage recorded and deducted from stock.');
     } catch (error) {
       toast.error(error.message);
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -189,7 +200,7 @@ export default function WastagePage() {
                 <button type="button" className="btn btn-secondary" onClick={() => setIsModalOpen(false)}>
                   Cancel
                 </button>
-                <button type="submit" className="btn btn-primary">
+                <button type="submit" className="btn btn-primary" disabled={saving}>
                   Save Wastage Record
                 </button>
               </div>
