@@ -11,7 +11,7 @@ import { createBrowserRouter, Navigate } from 'react-router-dom';
 import AppLayout from '../layouts/AppLayout';
 import AuthLayout from '../layouts/AuthLayout';
 import { useAuth } from '../hooks/useAuth';
-import { isStaffOnly, isInventoryOnly } from '../firebase/config';
+import { isStaffOnly, isInventoryOnly, isBillingEnabled } from '../firebase/config';
 import { INVENTORY_HOME } from '../constants/inventoryRelease';
 
 // ─── Lazy-loaded Pages ─────────────────────────────────────
@@ -187,7 +187,7 @@ export const router = createBrowserRouter([
       { path: '/pos', element: <SuspenseWrap><POSPage /></SuspenseWrap> },
 
       // Orders
-      { path: '/orders', element: <Navigate to="/orders/active" replace /> },
+      { path: '/orders', element: <Navigate to={isInventoryOnly && isBillingEnabled ? '/orders/history' : '/orders/active'} replace /> },
       { path: '/orders/active', element: <SuspenseWrap><ActiveOrdersPage /></SuspenseWrap> },
       { path: '/orders/history', element: <SuspenseWrap><OrderHistoryPage /></SuspenseWrap> },
 

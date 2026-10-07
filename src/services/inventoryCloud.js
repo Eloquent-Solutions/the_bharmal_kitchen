@@ -151,8 +151,14 @@ export async function saveWastageCloud(input, database = db) {
 
 export async function savePurchaseBillCloud(input, original = null, database = db) {
   if (!database) throw new Error('Firebase is unavailable.');
-  if (!input.supplier || !Array.isArray(input.items) || input.items.length === 0) throw new Error('Supplier and bill items are required.');
-  const id = original?.id || input.id || newId('BILL');
+  if (!input.supplier?.trim() || !input.invoiceNumber?.trim() || !Array.isArray(input.items) || input.items.length === 0) {
+    throw new Error('Supplier, vendor invoice number, and bill items are required.');
+  }
+  const invoiceIdentity = `${input.supplier.trim().toLowerCase()}|${input.invoiceNumber.trim().toLowerCase()}`;
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(invoiceIdentity));
+  const invoiceKey = [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
+  const id = original?.id || `BILL-${invoiceKey}`;
+  const clientRequestId = input.id || id;
   const billRef = doc(database, 'purchase_bills', id);
   const lines = input.items.map((item) => {
     if (!['raw_material', 'utensil'].includes(item.type) || !item.itemId) throw new Error('Select an existing inventory item.');
@@ -170,15 +176,22 @@ export async function savePurchaseBillCloud(input, original = null, database = d
     const billSnapshot = await transaction.get(billRef);
     if (original) {
       if (!billSnapshot.exists()) throw new Error('Bill was removed. Reload purchasing.');
+      if (billSnapshot.data().supplier !== input.supplier || billSnapshot.data().invoiceNumber !== input.invoiceNumber) {
+        throw new Error('Received bill supplier and invoice number cannot be changed.');
+      }
       if (input.paymentStatus !== 'paid') throw new Error('Received bills cannot be edited. Record a stock correction instead.');
-      transaction.update(billRef, { paymentStatus: 'paid', updatedAt: serverTimestamp() });
+      transaction.update(billRef, {
+        paymentStatus: 'paid',
+        paidAt: billSnapshot.data().paidAt || new Date().toISOString(),
+        updatedAt: serverTimestamp(),
+      });
       return;
     }
     if (billSnapshot.exists()) {
       const existing = billSnapshot.data();
-      if (existing.invoiceNumber === input.invoiceNumber && existing.supplier === input.supplier
+      if (existing.clientRequestId === clientRequestId && existing.invoiceNumber === input.invoiceNumber && existing.supplier === input.supplier
         && Number(existing.gstAmount || 0) === tax && JSON.stringify(existing.items) === JSON.stringify(lines)) return;
-      throw new Error('Bill ID already exists with different details. Reload purchasing.');
+      throw new Error('This supplier invoice has already been recorded.');
     }
     const snapshots = await Promise.all(refs.map(({ ref }) => transaction.get(ref)));
     for (const [index, entry] of refs.entries()) {
@@ -199,8 +212,10 @@ export async function savePurchaseBillCloud(input, original = null, database = d
       }
     }
     transaction.set(billRef, {
-      ...input, id, items: lines, billDate: input.billDate || new Date().toISOString().slice(0, 10),
-      paymentStatus: input.paymentStatus || 'pending', taxableAmount: subtotal, gstAmount: tax, totalAmount: billTotal,
+      ...input, id, clientRequestId, items: lines, billDate: input.billDate || new Date().toISOString().slice(0, 10),
+      paymentStatus: input.paymentStatus || 'pending',
+      paidAt: input.paymentStatus === 'paid' ? new Date().toISOString() : null,
+      taxableAmount: subtotal, gstAmount: tax, totalAmount: billTotal,
       updatedAt: serverTimestamp(),
     });
   });

@@ -38,6 +38,9 @@ if (appId && senderId && !appId.startsWith(`1:${senderId}:web:`)) {
 }
 
 if (process.env.VERCEL_ENV === 'production') {
+  if (process.env.VITE_BILLING_ENABLED === 'true') {
+    problems.push('Keep VITE_BILLING_ENABLED unset in Production until billing is approved.');
+  }
   const developmentProjectId = JSON.parse(readFileSync(new URL('../.firebaserc', import.meta.url), 'utf8')).projects?.default;
   if (process.env.VITE_FIREBASE_PROJECT_ID === developmentProjectId) {
     problems.push('Production must use a Firebase project ID different from the .firebaserc development default.');

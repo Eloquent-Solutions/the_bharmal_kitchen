@@ -9,7 +9,7 @@
  * - Auto-deduction of raw materials on checkout
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   Search,
   Plus,
@@ -32,6 +32,7 @@ import {
 } from 'lucide-react';
 import {
   getMenuItems,
+  getRecipes,
   getCategories,
   getCombos,
   calculateDishPortionsAvailable,
@@ -49,13 +50,19 @@ import { useAuth } from '../../hooks/useAuth';
 import { startOrderListener, stopOrderListener } from '../../services/realtimeOrderService';
 import { formatCurrency } from '../../utils/formatters';
 import { calculateOrderTotals } from '../../utils/calculations';
+import { isBillingEnabled, isDemoMode, isInventoryOnly } from '../../firebase/config';
+import { placePosOrderCloud } from '../../services/billingCloud';
+import { printBillingReceipt } from '../../utils/billingReceipt';
 import toast from 'react-hot-toast';
 import './POSPage.css';
 
 export default function POSPage() {
+  const billingRelease = isInventoryOnly && isBillingEnabled;
+  const cloudBilling = billingRelease && !isDemoMode;
   const { user } = useAuth();
   const [categories, setCategories] = useState([]);
   const [items, setItems] = useState([]);
+  const [recipes, setRecipes] = useState([]);
   const [combos, setCombos] = useState([]);
   const [tables, setTables] = useState([]);
   const [channelSettings, setChannelSettings] = useState(null);
@@ -68,6 +75,11 @@ export default function POSPage() {
   const [customerPhone, setCustomerPhone] = useState('');
   const [deliveryPartner, setDeliveryPartner] = useState('Direct Delivery (Raju)');
   const [selectedCaptain, setSelectedCaptain] = useState('Captain Shabbir');
+  const [paymentMethod, setPaymentMethod] = useState('cash');
+  const [paymentReceived, setPaymentReceived] = useState(false);
+  const [placingOrder, setPlacingOrder] = useState(false);
+  const [lastOrder, setLastOrder] = useState(null);
+  const orderAttemptRef = useRef(null);
 
   useEffect(() => {
     refreshData();
@@ -75,6 +87,9 @@ export default function POSPage() {
     const handleSync = () => refreshData();
     window.addEventListener('tbk_tables_updated', handleSync);
     window.addEventListener('tbk_channel_settings_updated', handleSync);
+    for (const event of ['tbk_menu_items_updated', 'tbk_categories_updated', 'tbk_recipes_updated', 'tbk_raw_materials_updated']) {
+      window.addEventListener(event, handleSync);
+    }
     window.addEventListener('storage', handleSync);
 
     // Listen in real-time for chef status changes (e.g. order marked cooked)
@@ -89,6 +104,9 @@ export default function POSPage() {
       stopOrderListener();
       window.removeEventListener('tbk_tables_updated', handleSync);
       window.removeEventListener('tbk_channel_settings_updated', handleSync);
+      for (const event of ['tbk_menu_items_updated', 'tbk_categories_updated', 'tbk_recipes_updated', 'tbk_raw_materials_updated']) {
+        window.removeEventListener(event, handleSync);
+      }
       window.removeEventListener('storage', handleSync);
     };
   }, []);
@@ -96,6 +114,7 @@ export default function POSPage() {
   const refreshData = () => {
     setCategories(getCategories());
     setItems(getMenuItems());
+    setRecipes(getRecipes());
     setCombos(getCombos());
     const loadedTables = getTables();
     setTables(loadedTables);
@@ -123,7 +142,7 @@ export default function POSPage() {
     return matchesCategory && matchesSearch;
   });
 
-  const filteredCombos = combos.filter((c) => {
+  const filteredCombos = (billingRelease ? [] : combos).filter((c) => {
     return (
       c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       (c.description && c.description.toLowerCase().includes(searchQuery.toLowerCase()))
@@ -135,7 +154,19 @@ export default function POSPage() {
     return cartItem ? cartItem.quantity : 0;
   };
 
+  const billablePortions = (item) => {
+    const portions = calculateDishPortionsAvailable(item.id, item.name);
+    if (billingRelease && !recipes.some((recipe) => recipe.dishId === item.id && recipe.ingredients?.length > 0)) {
+      return { ...portions, recipeFound: false };
+    }
+    return portions;
+  };
+
   const addToCart = (item, isCombo = false) => {
+    if (billingRelease && isCombo) {
+      toast.error('Combos need linked recipes before they can be billed.');
+      return;
+    }
     if (isCombo) {
       setCart((prev) => {
         const existing = prev.find((c) => c.id === item.id);
@@ -148,11 +179,15 @@ export default function POSPage() {
       return;
     }
 
-    const portionInfo = calculateDishPortionsAvailable(item.id, item.name);
+    const portionInfo = billablePortions(item);
     const inCartQty = getItemCartQty(item.id);
 
+    if (billingRelease && !portionInfo.recipeFound) {
+      toast.error(`Add a recipe for ${item.name} before billing it.`);
+      return;
+    }
     if (item.isAvailable === false || portionInfo.portionsAvailable === 0) {
-      toast.error(`"${item.name}" is currently 86 (Sold Out - Raw Materials Depleted)!`);
+      toast.error(`"${item.name}" is sold out or its raw materials are depleted.`);
       return;
     }
 
@@ -162,6 +197,7 @@ export default function POSPage() {
     }
 
     setCart((prev) => {
+      orderAttemptRef.current = null;
       const existing = prev.find((c) => c.id === item.id);
       if (existing) {
         return prev.map((c) =>
@@ -174,11 +210,12 @@ export default function POSPage() {
   };
 
   const updateQuantity = (itemId, delta) => {
+    orderAttemptRef.current = null;
     const targetItem = items.find((i) => i.id === itemId);
     const inCartQty = getItemCartQty(itemId);
 
     if (delta > 0 && targetItem) {
-      const portionInfo = calculateDishPortionsAvailable(targetItem.id, targetItem.name);
+      const portionInfo = billablePortions(targetItem);
       if (portionInfo.recipeFound && inCartQty >= portionInfo.portionsAvailable) {
         toast.error(`Cannot exceed ${portionInfo.portionsAvailable} portions ready in stock!`);
         return;
@@ -199,6 +236,7 @@ export default function POSPage() {
   };
 
   const clearCart = () => {
+    orderAttemptRef.current = null;
     setCart([]);
     toast.success('Cart cleared');
   };
@@ -335,63 +373,66 @@ export default function POSPage() {
     }
   };
 
-  const handlePlaceOrder = () => {
+  const handlePlaceOrder = async () => {
+    if (placingOrder) return;
     if (cart.length === 0) {
       toast.error('Cart is empty. Please select menu items or combos.');
       return;
     }
 
-    const orderId = `TBK-${Date.now().toString().slice(-4)}`;
+    const orderId = orderAttemptRef.current || `TBK-${crypto.randomUUID()}`;
+    orderAttemptRef.current = orderId;
 
-    // Auto-deduct raw materials for standard dishes
-    const standardDishes = cart.filter((c) => !c.isCombo);
-    let deductions;
-    try {
-      deductions = deductIngredientsForOrder(standardDishes, orderId);
-    } catch (error) {
-      toast.error(error.message);
+    if (billingRelease && !['Dine-in', 'Takeaway'].includes(orderType)) {
+      toast.error('Choose Dine-in or Takeaway for staff billing.');
       return;
     }
 
-    // Save order
-    saveOrder({
-      id: orderId,
-      orderNumber: Number(orderId.replace('TBK-', '')),
-      orderType: orderType.toLowerCase().replace('-', '_'),
-      table: orderType === 'Dine-in' ? selectedTable : null,
-      customer: customerName.trim() || 'Walk-in Guest',
-      phone: customerPhone.trim() || null,
-      captain: orderType === 'Dine-in' ? selectedCaptain : null,
-      deliveryPartner: orderType === 'Delivery' ? deliveryPartner : null,
-      items: cart.map((c) => ({
-        id: c.id,
-        name: c.name,
-        qty: c.quantity,
-        price: c.price,
-        isCombo: !!c.isCombo,
-      })),
-      total: totals.total,
-      status: 'received',
-      paymentStatus: orderType === 'Takeaway' ? 'paid' : 'pending',
-      createdBy: user?.displayName || user?.email || 'POS Staff',
-      createdById: user?.uid || null,
-      createdAt: new Date().toISOString(),
-    });
+    setPlacingOrder(true);
+    try {
+      if (cloudBilling) {
+        const saved = await placePosOrderCloud({
+          id: orderId, items: cart, orderType: orderType === 'Dine-in' ? 'dine_in' : 'takeaway',
+          table: selectedTable, customer: customerName, phone: customerPhone,
+          paymentMethod, paymentReceived,
+          expectedTotal: totals.total,
+          createdBy: user?.displayName || user?.email || 'POS Staff', createdById: user?.uid,
+        });
+        setLastOrder(saved);
+        toast.success(`Bill ${saved.id} saved. ${saved.paymentStatus === 'paid' ? 'Payment recorded.' : 'Payment pending.'}`);
+      } else {
+        const standardDishes = cart.filter((c) => !c.isCombo);
+        deductIngredientsForOrder(standardDishes, orderId);
+        const localOrder = {
+          id: orderId, orderNumber: orderId, orderType: orderType.toLowerCase().replace('-', '_'),
+          table: orderType === 'Dine-in' ? selectedTable : null,
+          customer: customerName.trim() || 'Walk-in Guest', phone: customerPhone.trim() || null,
+          captain: orderType === 'Dine-in' ? selectedCaptain : null,
+          deliveryPartner: orderType === 'Delivery' ? deliveryPartner : null,
+          items: cart.map((c) => ({ id: c.id, name: c.name, qty: c.quantity, price: c.price, isCombo: !!c.isCombo })),
+          ...totals, status: 'received',
+          paymentStatus: billingRelease && paymentReceived ? 'paid' : 'pending',
+          paymentMethod: billingRelease ? paymentMethod : null,
+          paidAt: billingRelease && paymentReceived ? new Date().toISOString() : null,
+          createdBy: user?.displayName || user?.email || 'POS Staff',
+          createdById: user?.uid || null, createdAt: new Date().toISOString(),
+        };
+        saveOrder(localOrder);
+        setLastOrder(localOrder);
+      }
 
-    refreshData();
-
-    if (deductions.length > 0) {
-      toast.success(
-        `Order #${orderId} Placed!\nAuto-deducted ${deductions.length} raw materials from inventory.`,
-        { duration: 4000 }
-      );
-    } else {
-      toast.success(`Order #${orderId} placed & dispatched to kitchen!`);
+      refreshData();
+      if (!cloudBilling) toast.success(`Order #${orderId} placed & dispatched to kitchen!`);
+      setCart([]);
+      setCustomerName('');
+      setCustomerPhone('');
+      setPaymentReceived(false);
+      orderAttemptRef.current = null;
+    } catch (error) {
+      toast.error(error.message);
+    } finally {
+      setPlacingOrder(false);
     }
-
-    setCart([]);
-    setCustomerName('');
-    setCustomerPhone('');
   };
 
   return (
@@ -412,7 +453,7 @@ export default function POSPage() {
           </div>
 
           <div className="pos-channel-tabs">
-            {['Dine-in', 'Takeaway', 'Delivery'].map((type) => {
+            {(billingRelease ? ['Dine-in', 'Takeaway'] : ['Dine-in', 'Takeaway', 'Delivery']).map((type) => {
               const isAllowed =
                 !channelSettings ||
                 (type === 'Dine-in' && channelSettings.allowDineIn !== false) ||
@@ -423,6 +464,7 @@ export default function POSPage() {
                   key={type}
                   className={`pos-channel-btn ${orderType === type ? 'active' : ''}`}
                   onClick={() => setOrderType(type)}
+                  disabled={!isAllowed}
                   style={{ opacity: isAllowed ? 1 : 0.65 }}
                   title={!isAllowed ? `${type} is turned OFF in Restaurant Settings` : ''}
                 >
@@ -476,7 +518,7 @@ export default function POSPage() {
           </div>
 
           {/* Combos Tab */}
-          <div
+          {!billingRelease && <div
             className={`pos-category-card ${activeCategory === 'Combos' ? 'active' : ''}`}
             onClick={() => setActiveCategory('Combos')}
             style={{ borderColor: activeCategory === 'Combos' ? 'var(--color-primary)' : 'rgba(200, 169, 126, 0.4)' }}
@@ -484,7 +526,7 @@ export default function POSPage() {
             <span style={{ fontSize: '18px' }}>✨</span>
             <span className="pos-category-name">Bohra Thaals & Combos</span>
             <span className="pos-category-count">{combos.length}</span>
-          </div>
+          </div>}
 
           {categories.map((cat) => (
             <div
@@ -561,8 +603,8 @@ export default function POSPage() {
           {activeCategory !== 'Combos' &&
             filteredDishes.map((item) => {
               const inCart = getItemCartQty(item.id);
-              const portionInfo = calculateDishPortionsAvailable(item.id, item.name);
-              const isSoldOut = item.isAvailable === false || portionInfo.portionsAvailable === 0;
+              const portionInfo = billablePortions(item);
+              const isSoldOut = item.isAvailable === false || portionInfo.portionsAvailable === 0 || (billingRelease && !portionInfo.recipeFound);
 
               return (
                 <div
@@ -601,7 +643,7 @@ export default function POSPage() {
                           <span className="pos-portion-tag soldout">✕ Sold Out (Raw Stock)</span>
                         )
                       ) : (
-                        <span className="pos-portion-tag low">Stock not tracked — add recipe</span>
+                        <span className="pos-portion-tag low">{billingRelease ? 'Linked recipe required' : 'Stock not tracked — add recipe'}</span>
                       )}
                     </div>
 
@@ -610,7 +652,7 @@ export default function POSPage() {
 
                       {isSoldOut ? (
                         <span className="badge badge-danger" style={{ fontSize: '10px' }}>
-                          86 Sold Out
+                          {billingRelease && !portionInfo.recipeFound ? 'Recipe required' : 'Sold Out'}
                         </span>
                       ) : inCart > 0 ? (
                         <div className="pos-qty-stepper">
@@ -674,7 +716,8 @@ export default function POSPage() {
 
           {orderType === 'Dine-in' && (
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <span style={{ fontSize: '11px', color: 'var(--text-tertiary)', whiteSpace: 'nowrap' }}>Captain:</span>
+              {!billingRelease && <span style={{ fontSize: '11px', color: 'var(--text-tertiary)', whiteSpace: 'nowrap' }}>Captain:</span>}
+              {!billingRelease &&
               <select
                 className="input"
                 value={selectedCaptain}
@@ -685,7 +728,7 @@ export default function POSPage() {
                 <option value="Captain Taher">Captain Taher</option>
                 <option value="Captain Mufaddal">Captain Mufaddal</option>
                 <option value="Waiter Ali">Waiter Ali</option>
-              </select>
+              </select>}
             </div>
           )}
 
@@ -744,26 +787,45 @@ export default function POSPage() {
             <span>{formatCurrency(totals.subtotal)}</span>
           </div>
           <div className="pos-summary-line">
-            <span>CGST (2.5%) + SGST (2.5%)</span>
+            <span>CGST + SGST</span>
             <span>{formatCurrency(totals.taxAmount)}</span>
           </div>
+          {totals.serviceCharge > 0 && <div className="pos-summary-line"><span>Service charge</span><span>{formatCurrency(totals.serviceCharge)}</span></div>}
+          {totals.roundOffAmount !== 0 && <div className="pos-summary-line"><span>Round off</span><span>{formatCurrency(totals.roundOffAmount)}</span></div>}
           <div className="pos-summary-total">
             <span>Total Payable</span>
             <span>{formatCurrency(totals.total)}</span>
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            <button
+            {billingRelease && <>
+              <label className="label" htmlFor="pos-payment-method">Payment method</label>
+              <select id="pos-payment-method" className="input" value={paymentMethod} onChange={(event) => setPaymentMethod(event.target.value)}>
+                <option value="cash">Cash</option><option value="upi">UPI</option>
+              </select>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: 'var(--font-sm)' }}>
+                <input type="checkbox" checked={paymentReceived} onChange={(event) => setPaymentReceived(event.target.checked)} />
+                I have received this payment
+              </label>
+            </>}
+            {!billingRelease && <button
               className="pos-checkout-btn"
               onClick={handleOpenSmartCardCheckout}
               style={{ background: 'linear-gradient(135deg, #c8a97e 0%, #b38d58 100%)', color: '#1a1815', fontWeight: '800' }}
             >
               <CreditCard size={18} /> Pay via Smart Card (NFC)
-            </button>
+            </button>}
 
-            <button className="pos-checkout-btn" onClick={handlePlaceOrder} style={{ opacity: 0.9 }}>
-              <CheckCircle2 size={18} /> Place Order (Cash / UPI)
+            <button className="pos-checkout-btn" onClick={handlePlaceOrder} disabled={placingOrder || cart.length === 0} style={{ opacity: placingOrder ? 0.6 : 0.9 }}>
+              <CheckCircle2 size={18} /> {placingOrder ? 'Saving bill...' : billingRelease ? 'Save Bill & Deduct Stock' : 'Place Order (Cash / UPI)'}
             </button>
+            {billingRelease && lastOrder && <div className="card" style={{ padding: '12px', fontSize: 'var(--font-sm)' }}>
+              <strong>Saved: {lastOrder.id}</strong><br />
+              {lastOrder.paymentStatus === 'paid' ? 'Payment recorded' : 'Payment pending'} · {formatCurrency(lastOrder.total)}
+              <button className="btn btn-secondary btn-sm" style={{ marginTop: '8px' }} onClick={() => {
+                try { printBillingReceipt(lastOrder); } catch (error) { toast.error(error.message); }
+              }}>Print Bill</button>
+            </div>}
           </div>
         </div>
       </div>

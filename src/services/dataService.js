@@ -18,7 +18,7 @@ import {
   serverTimestamp,
   onSnapshot,
 } from 'firebase/firestore';
-import { auth, db, isDemoMode, isInventoryOnly } from '../firebase/config';
+import { auth, db, isDemoMode, isInventoryOnly, isBillingEnabled } from '../firebase/config';
 import { formatRecordId } from '../utils/recordIds';
 
 const inventoryId = (prefix) => `${prefix}-${crypto.randomUUID()}`;
@@ -40,8 +40,8 @@ export async function initializeFirebaseDataSync(shouldStop = () => false, role 
   if (!db) return;
   if (isInventoryOnly) updateInventorySyncState({ ready: false, error: null });
   const collectionsToSync = [
-    { col: 'menu_items', key: 'tbk_menu_items', event: 'tbk_menu_items_updated' },
-    { col: 'categories', key: 'tbk_categories', event: 'tbk_categories_updated' },
+    { col: 'menu_items', key: 'tbk_menu_items', event: 'tbk_menu_items_updated', realtime: isBillingEnabled },
+    { col: 'categories', key: 'tbk_categories', event: 'tbk_categories_updated', realtime: isBillingEnabled },
     { col: 'combos', key: 'tbk_combos', event: 'tbk_combos_updated' },
     { col: 'modifiers', key: 'tbk_modifiers', event: 'tbk_modifiers_updated' },
     { col: 'recipes', key: 'tbk_recipes', event: 'tbk_recipes_updated', realtime: true },
@@ -90,7 +90,7 @@ export async function initializeFirebaseDataSync(shouldStop = () => false, role 
     { id: 'loyalty', key: 'tbk_loyalty_tiers' },
   ];
 
-  for (const s of (isInventoryOnly ? [] : settingsDocs)) {
+  for (const s of (isInventoryOnly ? (isBillingEnabled ? settingsDocs.filter(({ id }) => id === 'restaurant' || id === 'channels') : []) : settingsDocs)) {
     if (shouldStop()) return () => {};
     try {
       const snap = await getDoc(doc(db, 'settings', s.id));
@@ -116,6 +116,9 @@ export async function initializeFirebaseDataSync(shouldStop = () => false, role 
     inventoryCollections.add('purchase_bills');
   }
   if (['Owner', 'Admin'].includes(role)) inventoryCollections.add('users');
+  if (isBillingEnabled && ['Owner', 'Admin', 'Manager'].includes(role)) {
+    ['menu_items', 'categories', 'recipes', 'orders', 'tables'].forEach((col) => inventoryCollections.add(col));
+  }
   for (const item of (isInventoryOnly ? collectionsToSync.filter(({ col }) => inventoryCollections.has(col)) : collectionsToSync)) {
     if (shouldStop()) break;
     try {

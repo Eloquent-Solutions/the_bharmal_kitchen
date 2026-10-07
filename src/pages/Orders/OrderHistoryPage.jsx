@@ -20,8 +20,11 @@ import {
   ArrowUpDown,
   FileText,
 } from 'lucide-react';
-import { getOrders } from '../../services/dataService';
+import { getOrders, saveOrder } from '../../services/dataService';
 import { startOrderListener, stopOrderListener } from '../../services/realtimeOrderService';
+import { isBillingEnabled, isDemoMode, isInventoryOnly } from '../../firebase/config';
+import { markPosOrderPaidCloud } from '../../services/billingCloud';
+import { printBillingReceipt } from '../../utils/billingReceipt';
 import { formatCurrency, formatDateTime } from '../../utils/formatters';
 import toast from 'react-hot-toast';
 
@@ -29,6 +32,10 @@ export default function OrderHistoryPage() {
   const [orders, setOrders] = useState([]);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [paymentMethods, setPaymentMethods] = useState({});
+  const [payingOrderId, setPayingOrderId] = useState(null);
+  const [confirmPaymentOrderId, setConfirmPaymentOrderId] = useState(null);
+  const billingRelease = isInventoryOnly && isBillingEnabled;
 
   useEffect(() => {
     // Initial fetch from dataService
@@ -37,9 +44,7 @@ export default function OrderHistoryPage() {
     // Listen in real-time
     startOrderListener(
       (realtimeOrders) => {
-        if (realtimeOrders && realtimeOrders.length > 0) {
-          setOrders(realtimeOrders);
-        }
+        setOrders(realtimeOrders || []);
       },
       { viewRole: 'owner', soundEnabled: false }
     );
@@ -81,8 +86,27 @@ export default function OrderHistoryPage() {
   const handlePrint = (orderId) => {
     const order = orders.find((o) => o.id === orderId);
     if (!order) return;
-    toast.success(`Printing thermal receipt for Order #${order.orderNumber || order.id}...`);
-    window.print();
+    try { printBillingReceipt(order); } catch (error) { toast.error(error.message); }
+  };
+
+  const handleMarkPaid = async (order) => {
+    if (confirmPaymentOrderId !== order.id) {
+      setConfirmPaymentOrderId(order.id);
+      return;
+    }
+    const method = paymentMethods[order.id] || order.paymentMethod || 'cash';
+    setPayingOrderId(order.id);
+    try {
+      if (billingRelease && !isDemoMode) await markPosOrderPaidCloud(order.id, method);
+      else saveOrder({ ...order, paymentStatus: 'paid', paymentMethod: method, paidAt: new Date().toISOString() });
+      setOrders(getOrders());
+      toast.success(`Payment recorded for ${order.id}`);
+    } catch (error) {
+      toast.error(error.message);
+    } finally {
+      setPayingOrderId(null);
+      setConfirmPaymentOrderId(null);
+    }
   };
 
   const handleExportCSV = () => {
@@ -95,23 +119,25 @@ export default function OrderHistoryPage() {
     const rows = orders.map((o) => [
       o.id,
       new Date(o.createdAt || o.date || Date.now()).toLocaleString(),
-      `"${o.customer || o.customerName || 'Walk-in'}"`,
+      o.customer || o.customerName || 'Walk-in',
       o.orderType || 'Dine-in',
       o.table || 'N/A',
-      o.items?.length || o.itemsCount || 1,
-      o.total || 0,
-      o.paymentStatus || 'paid',
-      o.status || 'completed',
+      o.itemCount ?? o.items?.reduce((sum, item) => sum + Number(item.qty ?? item.quantity ?? 1), 0) ?? o.itemsCount ?? 0,
+      o.total ?? 0,
+      o.paymentStatus || 'pending',
+      o.status || 'received',
     ]);
 
-    const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map((e) => e.join(','))].join('\n');
-    const encodedUri = encodeURI(csvContent);
+    const csvCell = (value) => `"${String(value ?? '').replaceAll('"', '""')}"`;
+    const csvContent = [headers, ...rows].map((row) => row.map(csvCell).join(',')).join('\n');
+    const url = URL.createObjectURL(new Blob(['\uFEFF', csvContent], { type: 'text/csv;charset=utf-8' }));
     const link = document.createElement('a');
-    link.setAttribute('href', encodedUri);
+    link.setAttribute('href', url);
     link.setAttribute('download', `TBK_Order_History_${new Date().toISOString().slice(0, 10)}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    URL.revokeObjectURL(url);
     toast.success('Order history exported to CSV successfully!');
   };
 
@@ -192,7 +218,7 @@ export default function OrderHistoryPage() {
 
                 return (
                   <tr key={order.id}>
-                    <td style={{ fontWeight: '700' }}>#{order.orderNumber || order.id}</td>
+                    <td style={{ fontWeight: '700' }}>#{order.id}</td>
                     <td style={{ fontSize: 'var(--font-xs)', color: 'var(--text-secondary)' }}>
                       {formatDateTime(order.createdAt || order.date || Date.now())}
                     </td>
@@ -210,7 +236,7 @@ export default function OrderHistoryPage() {
                     </td>
                     <td style={{ fontSize: 'var(--font-xs)', color: 'var(--text-secondary)' }}>
                       <span className={`badge ${order.paymentStatus === 'paid' ? 'badge-success' : 'badge-warning'}`} style={{ fontSize: '10px' }}>
-                        {order.paymentMethod || (order.paymentStatus === 'paid' ? 'Paid' : 'Pending')}
+                        {order.paymentStatus === 'paid' ? `Paid · ${order.paymentMethod || 'unknown'}` : 'Pending'}
                       </span>
                     </td>
                     <td>
@@ -226,6 +252,20 @@ export default function OrderHistoryPage() {
                     </td>
                     <td style={{ textAlign: 'right' }}>
                       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 'var(--space-1)' }}>
+                        {billingRelease && order.paymentStatus !== 'paid' && <>
+                          <select className="input" aria-label={`Payment method for ${order.id}`} style={{ width: '85px', padding: '3px' }}
+                            value={paymentMethods[order.id] || order.paymentMethod || 'cash'}
+                            onChange={(event) => {
+                              setPaymentMethods((current) => ({ ...current, [order.id]: event.target.value }));
+                              setConfirmPaymentOrderId(null);
+                            }}>
+                            <option value="cash">Cash</option><option value="upi">UPI</option>
+                          </select>
+                          <button className="btn btn-secondary btn-sm" disabled={payingOrderId === order.id} onClick={() => handleMarkPaid(order)}>
+                            {payingOrderId === order.id ? 'Recording...' : confirmPaymentOrderId === order.id ? `Confirm ${formatCurrency(order.total)} received` : 'Record Payment'}
+                          </button>
+                          {confirmPaymentOrderId === order.id && <button className="btn btn-ghost btn-sm" onClick={() => setConfirmPaymentOrderId(null)}>Cancel</button>}
+                        </>}
                         <button
                           className="btn-icon"
                           onClick={() => handlePrint(order.id)}

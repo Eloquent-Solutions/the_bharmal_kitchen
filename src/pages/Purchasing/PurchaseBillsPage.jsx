@@ -46,6 +46,7 @@ export default function PurchaseBillsPage() {
   const [billToDelete, setBillToDelete] = useState(null);
   const [editingBill, setEditingBill] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [confirmPaidBillId, setConfirmPaidBillId] = useState(null);
 
   const [formData, setFormData] = useState({
     invoiceNumber: '',
@@ -78,7 +79,7 @@ export default function PurchaseBillsPage() {
 
     setFormData({
       id: `BILL-${crypto.randomUUID()}`,
-      invoiceNumber: `INV-${Date.now().toString().slice(-4)}`,
+      invoiceNumber: '',
       supplier: defaultSup,
       billDate: new Date().toISOString().split('T')[0],
       dueDate: new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0],
@@ -263,7 +264,7 @@ export default function PurchaseBillsPage() {
     const payload = {
       ...(editingBill || {}),
       id: editingBill?.id || formData.id,
-      invoiceNumber: formData.invoiceNumber || `INV-${Date.now().toString().slice(-4)}`,
+      invoiceNumber: formData.invoiceNumber.trim(),
       supplier: formData.supplier,
       billDate: formData.billDate,
       dueDate: formData.dueDate,
@@ -272,6 +273,7 @@ export default function PurchaseBillsPage() {
       gstAmount: gst,
       totalAmount: total,
       paymentStatus: formData.paymentStatus,
+      paidAt: formData.paymentStatus === 'paid' ? (editingBill?.paidAt || new Date().toISOString()) : null,
     };
 
     setSaving(true);
@@ -305,18 +307,23 @@ export default function PurchaseBillsPage() {
   };
 
   const handleMarkPaid = async (bill) => {
+    if (confirmPaidBillId !== bill.id) {
+      setConfirmPaidBillId(bill.id);
+      return;
+    }
     setSaving(true);
     try {
       if (isInventoryOnly && !isDemoMode) {
         await savePurchaseBillCloud({ ...bill, paymentStatus: 'paid' }, bill);
       } else {
-        setBills(savePurchaseBill({ ...bill, paymentStatus: 'paid' }));
+        setBills(savePurchaseBill({ ...bill, paymentStatus: 'paid', paidAt: bill.paidAt || new Date().toISOString() }));
       }
       toast.success(`Purchase invoice #${bill.id} marked as PAID`);
     } catch (error) {
       toast.error(error.message);
     } finally {
       setSaving(false);
+      setConfirmPaidBillId(null);
     }
   };
 
@@ -414,9 +421,10 @@ export default function PurchaseBillsPage() {
                           onClick={() => handleMarkPaid(b)}
                           disabled={saving}
                         >
-                          Mark Paid
+                          {confirmPaidBillId === b.id ? `Confirm ${formatCurrency(b.totalAmount)} paid` : 'Mark Paid'}
                         </button>
                       )}
+                      {confirmPaidBillId === b.id && <button className="btn btn-ghost btn-sm" onClick={() => setConfirmPaidBillId(null)} disabled={saving}>Cancel</button>}
                       {!isInventoryOnly && <button
                         className="btn-icon"
                         onClick={() => handleOpenEdit(b)}

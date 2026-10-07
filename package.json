@@ -10,6 +10,7 @@
     "lint": "eslint .",
     "test:inventory": "node --test tests/inventory.flow.test.mjs",
     "test:inventory:cloud": "firebase emulators:exec --only firestore --project demo-tbk-inventory 'node --test tests/inventory.cloud.test.mjs'",
+    "test:billing:cloud": "firebase emulators:exec --only firestore --project demo-tbk-billing 'node --test tests/billing.cloud.test.mjs'",
     "test:rules": "firebase emulators:exec --only firestore --project demo-tbk-rules 'node --test tests/firestore.rules.test.mjs'"
   },
   "dependencies": {

@@ -1,6 +1,6 @@
 # Inventory-only staff rollout on Vercel and Firebase
 
-The first client release is **staff-only and inventory-only**. Vercel serves the Vite site; Firebase provides Authentication and Firestore. The production Firebase project must be separate from the project used in `.env.local`. The site has not been deployed or accepted for real restaurant operations yet.
+The first client release is **staff-only and inventory-only**. Vercel serves the Vite site; Firebase provides Authentication and Firestore. The production Firebase project must be separate from the project used in `.env.local`. Billing review instructions are in [BILLING_REVIEW.md](BILLING_REVIEW.md).
 
 The client view contains raw materials, stock ledger, wastage, stock count, utensils, suppliers, purchase bills, inventory valuation, and owner user management. Recipes need menu setup and are held for a later branch. Purchase orders, POS, customer ordering, finance, and other modules are hidden and direct routes redirect to inventory. This switch is a user-interface scope; Firestore rules enforce data access.
 

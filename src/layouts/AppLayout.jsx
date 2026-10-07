@@ -8,9 +8,9 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Outlet, Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
-import { isStaffOnly, isInventoryOnly, isDemoMode } from '../firebase/config';
+import { isStaffOnly, isInventoryOnly, isBillingEnabled, isDemoMode } from '../firebase/config';
 import { getInventorySyncState } from '../services/dataService';
-import { INVENTORY_HOME, INVENTORY_RELEASE_ROUTES, inventoryReleaseTabForPath } from '../constants/inventoryRelease';
+import { BILLING_RELEASE_ROUTES, INVENTORY_HOME, INVENTORY_RELEASE_ROUTES, inventoryReleaseTabForPath } from '../constants/inventoryRelease';
 import { PERMISSIONS, ROLES } from '../constants/roles';
 import Sidebar from '../components/Sidebar/Sidebar';
 import TopBar from '../components/TopBar/TopBar';
@@ -85,11 +85,14 @@ export default function AppLayout() {
   }
 
   if (isInventoryOnly) {
-    if (!INVENTORY_RELEASE_ROUTES.has(location.pathname)) {
+    if (!INVENTORY_RELEASE_ROUTES.has(location.pathname) && !(isBillingEnabled && BILLING_RELEASE_ROUTES.has(location.pathname))) {
       return <Navigate to={INVENTORY_HOME} replace />;
     }
-    const tab = inventoryReleaseTabForPath(location.pathname);
-    const requiredPermission = location.pathname.startsWith('/purchasing')
+    const billingPath = isBillingEnabled && BILLING_RELEASE_ROUTES.has(location.pathname);
+    const tab = billingPath ? (location.pathname === '/pos' ? 'pos' : location.pathname === '/orders' ? 'orders' : 'orders-history') : inventoryReleaseTabForPath(location.pathname);
+    const requiredPermission = billingPath
+      ? PERMISSIONS.CREATE_ORDER
+      : location.pathname.startsWith('/purchasing')
       ? PERMISSIONS.MANAGE_PURCHASE
       : location.pathname.startsWith('/reports')
         ? PERMISSIONS.VIEW_REPORTS
@@ -98,6 +101,7 @@ export default function AppLayout() {
           : PERMISSIONS.MANAGE_INVENTORY;
     const authorized = hasPermission(requiredPermission)
       && isTabAllowed(tab)
+      && (!billingPath || [ROLES.OWNER, ROLES.ADMIN, ROLES.MANAGER].includes(role))
       && (!location.pathname.startsWith('/settings') || [ROLES.OWNER, ROLES.ADMIN].includes(role));
     if (!authorized) {
       return (
