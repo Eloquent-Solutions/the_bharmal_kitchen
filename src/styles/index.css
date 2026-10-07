@@ -70,6 +70,29 @@
   --text-4xl: 2.25rem;
   --text-5xl: 3rem;
 
+  /* Existing page forms use these names; keep them aligned with the design scale. */
+  --font-xs: var(--text-xs);
+  --font-sm: var(--text-sm);
+  --font-base: var(--text-base);
+  --font-md: var(--text-md);
+  --font-lg: var(--text-lg);
+  --font-xl: var(--text-xl);
+  --font-2xl: var(--text-2xl);
+  --font-3xl: var(--text-3xl);
+
+  --border-color: var(--glass-border-light);
+  --border-color-hover: var(--glass-border);
+  --bg-glass-subtle: rgba(255, 255, 255, 0.04);
+  --bg-glass: var(--glass-bg);
+  --bg-surface: var(--bg-secondary);
+  --bg-card: var(--bg-tertiary);
+  --bg-main: var(--bg-primary);
+  --card-bg: var(--bg-tertiary);
+  --color-primary-subtle: rgba(200, 169, 126, 0.12);
+  --color-primary-bg: rgba(200, 169, 126, 0.12);
+  --text-danger: var(--color-danger);
+  --transition-normal: var(--transition-base);
+
   --font-light: 300;
   --font-regular: 400;
   --font-medium: 500;
@@ -421,10 +444,16 @@ h6 { font-size: var(--text-md); }
   gap: var(--space-1);
 }
 
-.input-label {
+.input-label,
+.label {
   font-size: var(--text-sm);
   font-weight: var(--font-medium);
   color: var(--text-secondary);
+}
+
+.label {
+  display: block;
+  margin-bottom: var(--space-1);
 }
 
 .input-label.required::after {
@@ -432,8 +461,10 @@ h6 { font-size: var(--text-md); }
   color: var(--color-danger);
 }
 
-.input-field {
+.input-field,
+.input {
   width: 100%;
+  min-width: 0;
   padding: var(--space-3) var(--space-4);
   background: rgba(10, 10, 26, 0.6);
   border: 1px solid var(--glass-border-light);
@@ -444,17 +475,20 @@ h6 { font-size: var(--text-md); }
   min-height: 44px;
 }
 
-.input-field::placeholder {
+.input-field::placeholder,
+.input::placeholder {
   color: var(--text-tertiary);
 }
 
-.input-field:focus {
+.input-field:focus,
+.input:focus {
   border-color: var(--color-primary);
   box-shadow: 0 0 0 3px var(--color-primary-glow);
   background: rgba(15, 15, 35, 0.8);
 }
 
-.input-field:disabled {
+.input-field:disabled,
+.input:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
@@ -474,7 +508,8 @@ h6 { font-size: var(--text-md); }
   color: var(--color-danger);
 }
 
-select.input-field {
+select.input-field,
+select.input {
   appearance: none;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23a8a4b8' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
@@ -482,9 +517,15 @@ select.input-field {
   padding-right: 40px;
 }
 
-textarea.input-field {
+textarea.input-field,
+textarea.input {
   min-height: 100px;
   resize: vertical;
+}
+
+select.input option {
+  background: var(--bg-elevated);
+  color: var(--text-primary);
 }
 
 /* ---------- Badge / Tag ---------- */
@@ -595,7 +636,8 @@ textarea.input-field {
   width: 100%;
   max-width: 560px;
   max-height: 90vh;
-  overflow: hidden;
+  overflow-y: auto;
+  padding: var(--space-6);
   display: flex;
   flex-direction: column;
   animation: slideUp var(--transition-base) var(--transition-spring);
