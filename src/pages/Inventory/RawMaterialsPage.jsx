@@ -31,6 +31,7 @@ import { formatCurrency, formatRecordId } from '../../utils/formatters';
 import toast from 'react-hot-toast';
 import { isDemoMode, isInventoryOnly } from '../../firebase/config';
 import { saveRawMaterialCloud, adjustRawMaterialStockCloud } from '../../services/inventoryCloud';
+import EmptyState from '../../components/EmptyState';
 
 export default function RawMaterialsPage() {
   const [materials, setMaterials] = useState([]);
@@ -256,7 +257,19 @@ export default function RawMaterialsPage() {
 
       {/* Materials Table */}
       <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-        <div className="table-container">
+        {filtered.length === 0 ? (
+          <EmptyState
+            icon={Package}
+            title={materials.length === 0 ? 'No raw materials yet' : 'No materials found'}
+            description={materials.length === 0
+              ? 'Add your first ingredient or supply to start tracking stock and receiving deliveries.'
+              : 'Try another search term or category to find the material you need.'}
+            action={materials.length === 0
+              ? <button className="btn btn-primary" onClick={handleOpenAdd}><Plus size={16} /> Add Raw Material</button>
+              : <button className="btn btn-secondary" onClick={() => { setSearch(''); setSelectedCategory('All'); }}>Clear filters</button>}
+          />
+        ) : (
+          <div className="table-container">
           <table className="table">
             <thead>
               <tr>
@@ -330,7 +343,8 @@ export default function RawMaterialsPage() {
               })}
             </tbody>
           </table>
-        </div>
+          </div>
+        )}
       </div>
 
       {/* Adjust Stock Modal */}

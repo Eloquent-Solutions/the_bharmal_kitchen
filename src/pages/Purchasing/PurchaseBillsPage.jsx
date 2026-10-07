@@ -7,6 +7,7 @@
  */
 
 import { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import {
   Receipt,
   Plus,
@@ -33,6 +34,7 @@ import { formatCurrency, formatDate, formatRecordId } from '../../utils/formatte
 import toast from 'react-hot-toast';
 import { isDemoMode, isInventoryOnly } from '../../firebase/config';
 import { savePurchaseBillCloud } from '../../services/inventoryCloud';
+import EmptyState from '../../components/EmptyState';
 import './PurchaseBillsPage.css';
 
 export default function PurchaseBillsPage() {
@@ -338,6 +340,20 @@ export default function PurchaseBillsPage() {
     : rawMaterials.length === 0 && utensils.length === 0
       ? 'Add a raw material or utensil first'
       : undefined;
+  const emptyBillDescription = bills.length > 0
+    ? 'Try a different invoice number or supplier.'
+    : suppliers.length === 0
+      ? 'Add a supplier to start recording purchase bills and receiving stock.'
+      : purchaseBillUnavailableReason
+        ? 'Add a raw material or utensil before recording a supplier bill.'
+        : 'Record a supplier invoice to bring purchased stock into inventory.';
+  const emptyBillAction = bills.length > 0
+    ? <button className="btn btn-secondary" onClick={() => setSearch('')}>Clear search</button>
+    : purchaseBillUnavailableReason
+      ? <Link className="btn btn-secondary" to={suppliers.length === 0 ? '/purchasing/suppliers' : '/inventory/materials'}>
+          {suppliers.length === 0 ? 'Add Supplier' : 'Add Inventory Item'}
+        </Link>
+      : <button className="btn btn-primary" onClick={handleOpenAdd}><Plus size={16} /> Record Purchase Bill</button>;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-5)' }}>
@@ -374,7 +390,15 @@ export default function PurchaseBillsPage() {
 
       {/* Table */}
       <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-        <div className="table-container">
+        {filtered.length === 0 ? (
+          <EmptyState
+            icon={Receipt}
+            title={bills.length === 0 ? 'No purchase bills yet' : 'No purchase bills found'}
+            description={emptyBillDescription}
+            action={emptyBillAction}
+          />
+        ) : (
+          <div className="table-container">
           <table className="table">
             <thead>
               <tr>
@@ -451,7 +475,8 @@ export default function PurchaseBillsPage() {
               ))}
             </tbody>
           </table>
-        </div>
+          </div>
+        )}
       </div>
 
       {/* Add / Edit Bill Modal with Multi-line Inward Items */}

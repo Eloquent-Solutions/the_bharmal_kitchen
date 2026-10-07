@@ -571,12 +571,19 @@ select.input option {
 }
 
 /* ---------- Table ---------- */
+.table-container {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.table,
 .data-table {
   width: 100%;
   border-collapse: separate;
   border-spacing: 0;
 }
 
+.table thead th,
 .data-table thead th {
   padding: var(--space-3) var(--space-4);
   text-align: left;
@@ -592,13 +599,16 @@ select.input option {
   z-index: 1;
 }
 
+.table tbody tr,
 .data-table tbody tr {
   transition: background var(--transition-fast);
 }
+.table tbody tr:hover,
 .data-table tbody tr:hover {
   background: rgba(200, 169, 126, 0.04);
 }
 
+.table tbody td,
 .data-table tbody td {
   padding: var(--space-3) var(--space-4);
   border-bottom: 1px solid rgba(255, 255, 255, 0.04);
@@ -607,6 +617,7 @@ select.input option {
   vertical-align: middle;
 }
 
+.table tbody td:first-child,
 .data-table tbody td:first-child {
   color: var(--text-primary);
   font-weight: var(--font-medium);
