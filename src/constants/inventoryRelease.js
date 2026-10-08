@@ -34,8 +34,16 @@ export const INVENTORY_RELEASE_ROUTES = new Set([
   '/settings/users',
 ]);
 
-export const BILLING_RELEASE_TABS = new Set(['pos', 'orders', 'orders-history']);
-export const BILLING_RELEASE_ROUTES = new Set(['/pos', '/orders', '/orders/history']);
+export const BILLING_RELEASE_TABS = new Set([
+  'pos', 'orders', 'orders-history',
+  'menu', 'menu-items', 'menu-categories',
+  'inventory-recipes',
+]);
+export const BILLING_RELEASE_ROUTES = new Set([
+  '/pos', '/orders', '/orders/history',
+  '/menu', '/menu/items', '/menu/categories',
+  '/inventory/recipes',
+]);
 
 export function inventoryReleaseTabForPath(pathname) {
   if (pathname === '/inventory') return 'inventory';

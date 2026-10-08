@@ -8,6 +8,8 @@ For local testing and Vercel Preview, use the **development** Firebase Web app v
 
 An Owner, Admin, or Manager with POS and Orders tabs can review POS billing. The Manager role can update the stock ledger as part of a bill. Cashier billing is held back until an authorized server-side stock deduction is built. An Inventory Manager can continue recording supplier bills; the purchase bill screen remains under Purchasing.
 
+For a new production database, create a menu category and dish under Menu, then link that dish to stocked raw materials under Inventory → Recipes. POS hides uncategorized dishes and prevents billing dishes without a linked recipe or sufficient stock.
+
 ## What to check
 
 1. Ensure each dish you want to bill already has a menu item, price, and recipe linked by `dishId`, and that its raw materials have stock. Dishes without a linked recipe cannot be billed. The current review scope supports Dine-in and Takeaway dishes, Cash and manually confirmed UPI, and receipts. Combos and public orders remain hidden.

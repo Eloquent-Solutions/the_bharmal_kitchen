@@ -2,7 +2,7 @@
 
 The client release is **staff-only**, with inventory, supplier purchase bills, and POS billing enabled. Vercel serves the Vite site; Firebase provides Authentication and Firestore. The production Firebase project must be separate from the project used in `.env.local`. Billing flow details and limitations are in [BILLING_REVIEW.md](BILLING_REVIEW.md).
 
-The client view contains raw materials, stock ledger, wastage, stock count, utensils, suppliers, purchase bills, inventory valuation, POS, order history, and owner user management. POS is limited to Owner, Admin, and Manager accounts with assigned tabs. Recipes need menu setup and are held for a later branch. Purchase orders, public customer ordering, finance, and other modules are hidden and direct routes redirect to inventory. These switches set the user-interface scope; Firestore rules enforce data access.
+The client view contains raw materials, stock ledger, wastage, stock count, utensils, suppliers, purchase bills, inventory valuation, POS, order history, menu dishes, categories, recipes, and owner user management. POS and its menu setup are limited to Owner, Admin, and Manager accounts with assigned tabs. Purchase orders, public customer ordering, finance, and other modules are hidden and direct routes redirect to inventory. These switches set the user-interface scope; Firestore rules enforce data access.
 
 ## 1. Create the production Firebase project
 
@@ -53,7 +53,7 @@ The app's route guard is only a user-interface control. Firestore rules are the 
 ## 4. Acceptance checks before going live
 
 - Build, lint, and inventory flow tests pass: `npm run build`, `npm run lint`, and `npm run test:inventory`.
-- Owner sign-in reaches `/inventory/materials`; inventory, purchasing, POS (`/pos`), and order history (`/orders/history`) load from the production project. A direct visit to `/dashboard` redirects to inventory.
+- Owner sign-in reaches `/inventory/materials`; inventory, purchasing, POS (`/pos`), order history (`/orders/history`), menu dishes (`/menu/items`), categories (`/menu/categories`), and recipes (`/inventory/recipes`) load from the production project. A direct visit to `/dashboard` redirects to inventory.
 - A staff member receives only the expected role and tabs. A customer or unsigned visitor cannot reach staff pages or read Firestore data.
 - The production project starts without bundled sample orders, customers, stock, or staff records.
 - Inventory and bill changes remain correct across two browsers after refresh. Check stock counts, supplier bills, POS bills, and wastage with disposable test records, including simultaneous adjustments from two staff sessions.

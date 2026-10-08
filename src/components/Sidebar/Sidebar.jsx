@@ -37,17 +37,20 @@ export default function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose
   }, []);
 
   const isActive = (path) => location.pathname.startsWith(path);
+  const billingRoleAllowed = [ROLES.OWNER, ROLES.ADMIN, ROLES.MANAGER].includes(role);
 
   // Filter top-level items by permission & admin-configured allowedTabs
   const filteredNav = NAVIGATION.filter((item) =>
     (!isInventoryOnly || INVENTORY_RELEASE_TABS.has(item.id) || (isBillingEnabled && BILLING_RELEASE_TABS.has(item.id)))
-    && (!isInventoryOnly || !BILLING_RELEASE_TABS.has(item.id) || [ROLES.OWNER, ROLES.ADMIN, ROLES.MANAGER].includes(role))
+    && (!isInventoryOnly || !BILLING_RELEASE_TABS.has(item.id) || billingRoleAllowed)
     && hasAnyPermission(item.permissions)
     && isTabAllowed(item.id)
   ).map((item) => {
     if (item.children && item.children.length > 0) {
       const allowedChildren = item.children.filter((child) =>
-        (!isInventoryOnly || INVENTORY_RELEASE_TABS.has(child.id) || (isBillingEnabled && BILLING_RELEASE_TABS.has(child.id))) && isTabAllowed(child.id)
+        (!isInventoryOnly || INVENTORY_RELEASE_TABS.has(child.id) || (isBillingEnabled && BILLING_RELEASE_TABS.has(child.id)))
+        && (!isInventoryOnly || !BILLING_RELEASE_TABS.has(child.id) || billingRoleAllowed)
+        && isTabAllowed(child.id)
       );
       return {
         ...item,

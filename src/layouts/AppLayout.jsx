@@ -89,9 +89,15 @@ export default function AppLayout() {
       return <Navigate to={INVENTORY_HOME} replace />;
     }
     const billingPath = isBillingEnabled && BILLING_RELEASE_ROUTES.has(location.pathname);
-    const tab = billingPath ? (location.pathname === '/pos' ? 'pos' : location.pathname === '/orders' ? 'orders' : 'orders-history') : inventoryReleaseTabForPath(location.pathname);
+    const tab = billingPath && (location.pathname === '/pos' || location.pathname.startsWith('/orders'))
+      ? (location.pathname === '/pos' ? 'pos' : location.pathname === '/orders' ? 'orders' : 'orders-history')
+      : inventoryReleaseTabForPath(location.pathname);
     const requiredPermission = billingPath
-      ? PERMISSIONS.CREATE_ORDER
+      ? location.pathname.startsWith('/menu')
+        ? PERMISSIONS.MANAGE_MENU
+        : location.pathname === '/inventory/recipes'
+          ? PERMISSIONS.MANAGE_RECIPE
+          : PERMISSIONS.CREATE_ORDER
       : location.pathname.startsWith('/purchasing')
       ? PERMISSIONS.MANAGE_PURCHASE
       : location.pathname.startsWith('/reports')
@@ -106,8 +112,8 @@ export default function AppLayout() {
     if (!authorized) {
       return (
         <div className="loading-screen">
-          <h2>Inventory access is not assigned</h2>
-          <p>Ask the owner to assign the Inventory Manager role and inventory tabs to this account.</p>
+          <h2>Access is not assigned</h2>
+          <p>Ask the owner to assign the required role and tabs to this account.</p>
           <button className="btn btn-primary" onClick={signOut}>Sign out</button>
         </div>
       );

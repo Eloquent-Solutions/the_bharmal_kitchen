@@ -10,6 +10,7 @@
  */
 
 import { useState, useEffect, useRef } from 'react';
+import { Link } from 'react-router-dom';
 import {
   Search,
   Plus,
@@ -53,6 +54,7 @@ import { calculateOrderTotals } from '../../utils/calculations';
 import { isBillingEnabled, isDemoMode, isInventoryOnly } from '../../firebase/config';
 import { placePosOrderCloud } from '../../services/billingCloud';
 import { printBillingReceipt } from '../../utils/billingReceipt';
+import EmptyState from '../../components/EmptyState';
 import toast from 'react-hot-toast';
 import './POSPage.css';
 
@@ -546,6 +548,18 @@ export default function POSPage() {
 
         {/* Content Area: Combos OR Dishes */}
         <div className="pos-items-grid">
+          {billingRelease && activeCategory === 'All' && !searchQuery && filteredDishes.length === 0 && (
+            <div style={{ gridColumn: '1 / -1' }}>
+              <EmptyState
+                icon={UtensilsCrossed}
+                title={items.length === 0 ? 'Add dishes to start billing' : 'No dishes are ready to bill'}
+                description={items.length === 0
+                  ? 'Create a menu dish, assign its category, and link a recipe to raw materials before billing it.'
+                  : 'Check each dish category and link a recipe with available raw materials.'}
+                action={<Link className="btn btn-primary" to="/menu/items">Set up menu dishes</Link>}
+              />
+            </div>
+          )}
           {/* Show Combos when selected or in All if searching */}
           {(activeCategory === 'Combos' || (activeCategory === 'All' && filteredCombos.length > 0 && searchQuery)) && (
             filteredCombos.map((combo) => {
