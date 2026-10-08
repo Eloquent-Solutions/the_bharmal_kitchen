@@ -1,10 +1,10 @@
-# Billing branch review
+# Billing release notes
 
-Branch: `codex/billing`. Production stays on the inventory-only release. The Production Vercel build rejects `VITE_BILLING_ENABLED=true` until billing is separately approved.
+The reviewed billing work is merged into `main`. Production uses `VITE_BILLING_ENABLED=true` alongside the staff-only and inventory release flags. The Production Vercel build requires this flag so a deployment cannot silently hide billing again.
 
 ## Review locally or on a Vercel Preview
 
-Use the **development** Firebase Web app values, `VITE_DATA_MODE=firebase`, `VITE_STAFF_ONLY=true`, `VITE_INVENTORY_ONLY=true`, and `VITE_BILLING_ENABLED=true`. A local `.env.local` can hold these values; for Vercel Preview, set them in the Preview environment only and redeploy. Add the Preview hostname under Firebase Authentication authorized domains if using Google sign-in.
+For local testing and Vercel Preview, use the **development** Firebase Web app values, `VITE_DATA_MODE=firebase`, `VITE_STAFF_ONLY=true`, `VITE_INVENTORY_ONLY=true`, and `VITE_BILLING_ENABLED=true`. A local `.env.local` can hold these values. Add the Preview hostname under Firebase Authentication authorized domains if using Google sign-in. Production uses the separate production Firebase project.
 
 An Owner, Admin, or Manager with POS and Orders tabs can review POS billing. The Manager role can update the stock ledger as part of a bill. Cashier billing is held back until an authorized server-side stock deduction is built. An Inventory Manager can continue recording supplier bills; the purchase bill screen remains under Purchasing.
 
@@ -15,7 +15,7 @@ An Owner, Admin, or Manager with POS and Orders tabs can review POS billing. The
 3. Mark a pending bill paid only after receiving money. Print or reprint the bill. Printing uses the browser print dialog; a physical thermal printer still needs a device-specific check.
 4. In Purchasing → Purchase Bills, enter the supplier's actual invoice number and received item quantities. Check that stock increases once. A second bill with the same supplier and invoice number should be rejected. Mark it paid after the supplier payment is sent. This status is a manual record; the app does not transfer money.
 
-The deterministic supplier invoice ID protects invoices newly entered through this branch. Older bills created before this branch have different IDs; check for an existing vendor invoice before entering historical bills. Tax rates come from the restaurant settings document. Receipt formatting and manual UPI confirmation need business review before live customer billing. No payment gateway is connected.
+The deterministic supplier invoice ID protects invoices newly entered through this flow. Older bills created before it have different IDs; check for an existing vendor invoice before entering historical bills. Tax rates come from the restaurant settings document. Receipt formatting and manual UPI confirmation need business review before using those options with customers. No payment gateway is connected.
 
 ## Checks run on this branch
 

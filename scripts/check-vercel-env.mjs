@@ -38,8 +38,8 @@ if (appId && senderId && !appId.startsWith(`1:${senderId}:web:`)) {
 }
 
 if (process.env.VERCEL_ENV === 'production') {
-  if (process.env.VITE_BILLING_ENABLED === 'true') {
-    problems.push('Keep VITE_BILLING_ENABLED unset in Production until billing is approved.');
+  if (process.env.VITE_BILLING_ENABLED !== 'true') {
+    problems.push('Set VITE_BILLING_ENABLED=true for the staff billing release.');
   }
   const developmentProjectId = JSON.parse(readFileSync(new URL('../.firebaserc', import.meta.url), 'utf8')).projects?.default;
   if (process.env.VITE_FIREBASE_PROJECT_ID === developmentProjectId) {
