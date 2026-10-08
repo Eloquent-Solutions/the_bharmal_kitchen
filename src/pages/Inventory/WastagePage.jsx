@@ -18,6 +18,7 @@ import { getWastageLogs, saveWastageLog, getRawMaterials } from '../../services/
 import toast from 'react-hot-toast';
 import { isDemoMode, isInventoryOnly } from '../../firebase/config';
 import { saveWastageCloud } from '../../services/inventoryCloud';
+import EmptyState from '../../components/EmptyState';
 
 export default function WastagePage() {
   const [wastage, setWastage] = useState([]);
@@ -95,15 +96,21 @@ export default function WastagePage() {
         <div className="card" style={{ borderLeft: '4px solid var(--color-warning)' }}>
           <div style={{ fontSize: 'var(--font-xs)', color: 'var(--text-tertiary)' }}>Wastage Log Entries</div>
           <div style={{ fontSize: 'var(--font-2xl)', fontWeight: '800', marginTop: '4px' }}>
-            {wastage.length} Events
+            {wastage.length} {wastage.length === 1 ? 'Event' : 'Events'}
           </div>
         </div>
       </div>
 
       {/* Table */}
       <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-        <div className="table-container">
-          <table className="table">
+        {wastage.length === 0 ? (
+          <EmptyState
+            icon={Trash2}
+            title="No wastage recorded"
+            description="Use Record Wastage when stock is lost to spoilage, trimming, or a kitchen error."
+          />
+        ) : <div className="table-container">
+          <table className="table" style={{ minWidth: '1200px' }}>
             <thead>
               <tr>
                 <th>Voucher #</th>
@@ -116,14 +123,7 @@ export default function WastagePage() {
               </tr>
             </thead>
             <tbody>
-              {wastage.length === 0 ? (
-                <tr>
-                  <td colSpan="7" style={{ textAlign: 'center', padding: 'var(--space-6)', color: 'var(--text-secondary)' }}>
-                    No wastage records found. Use "Record Wastage" to log spoilage events.
-                  </td>
-                </tr>
-              ) : (
-                wastage.map((w) => (
+              {wastage.map((w) => (
                   <tr key={w.id}>
                     <td title={w.id} style={{ fontWeight: '700', color: 'var(--text-tertiary)' }}>{formatRecordId(w.id)}</td>
                     <td style={{ fontSize: 'var(--font-xs)', color: 'var(--text-secondary)' }}>{formatDate(w.date)}</td>
@@ -133,11 +133,10 @@ export default function WastagePage() {
                     <td style={{ fontSize: 'var(--font-xs)', color: 'var(--text-secondary)' }}>{w.reason}</td>
                     <td style={{ fontSize: 'var(--font-xs)' }}>{w.loggedBy}</td>
                   </tr>
-                ))
-              )}
+                ))}
             </tbody>
           </table>
-        </div>
+        </div>}
       </div>
 
       {/* Modal */}

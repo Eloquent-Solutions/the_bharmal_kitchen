@@ -19,6 +19,7 @@ import { formatRecordId } from '../../utils/formatters';
 import toast from 'react-hot-toast';
 import { isDemoMode, isInventoryOnly } from '../../firebase/config';
 import { reconcilePhysicalStockCloud } from '../../services/inventoryCloud';
+import EmptyState from '../../components/EmptyState';
 
 export default function StockCountPage() {
   const [items, setItems] = useState([]);
@@ -93,7 +94,7 @@ export default function StockCountPage() {
           <button className="btn btn-secondary" onClick={loadItems}>
             <RotateCcw size={16} /> Reload Current Stock
           </button>
-          <button className="btn btn-primary" onClick={handleReconcileAll} disabled={saving}>
+          <button className="btn btn-primary" onClick={handleReconcileAll} disabled={saving || items.length === 0}>
             <Save size={16} /> Reconcile Stock Discrepancies
           </button>
         </div>
@@ -101,8 +102,14 @@ export default function StockCountPage() {
 
       {/* Table */}
       <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-        <div className="table-container">
-          <table className="table">
+        {items.length === 0 ? (
+          <EmptyState
+            icon={ClipboardCheck}
+            title="No materials to count"
+            description="Add raw materials before starting a physical stock count."
+          />
+        ) : <div className="table-container">
+          <table className="table" style={{ minWidth: '1100px' }}>
             <thead>
               <tr>
                 <th>Code</th>
@@ -115,14 +122,7 @@ export default function StockCountPage() {
               </tr>
             </thead>
             <tbody>
-              {items.length === 0 ? (
-                <tr>
-                  <td colSpan="7" style={{ textAlign: 'center', padding: 'var(--space-6)', color: 'var(--text-secondary)' }}>
-                    No raw materials found. Add materials in Inventory → Raw Materials first.
-                  </td>
-                </tr>
-              ) : (
-                items.map((item) => {
+              {items.map((item) => {
                   const invalid = item.countedStock === '' || !Number.isFinite(Number(item.countedStock)) || Number(item.countedStock) < 0;
                   const diff = item.countedStock === '' ? 0 : Number(item.countedStock) - item.systemStock;
                   const diffVal = diff * item.unitCost;
@@ -160,11 +160,10 @@ export default function StockCountPage() {
                       </td>
                     </tr>
                   );
-                })
-              )}
+                })}
             </tbody>
           </table>
-        </div>
+        </div>}
       </div>
     </div>
   );

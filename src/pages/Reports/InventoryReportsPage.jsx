@@ -6,8 +6,10 @@
  */
 
 import { useState, useEffect } from 'react';
+import { Package } from 'lucide-react';
 import { getRawMaterials } from '../../services/dataService';
 import { formatCurrency } from '../../utils/formatters';
+import EmptyState from '../../components/EmptyState';
 
 export default function InventoryReportsPage() {
   const [materials, setMaterials] = useState([]);
@@ -86,14 +88,14 @@ export default function InventoryReportsPage() {
             {materials.length} Raw Materials
           </div>
           <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px' }}>
-            Across {categoryRows.length} Categories
+            Across {categoryRows.length} {categoryRows.length === 1 ? 'Category' : 'Categories'}
           </div>
         </div>
 
         <div className="card" style={{ borderLeft: '4px solid var(--color-danger)' }}>
           <div style={{ fontSize: 'var(--font-xs)', color: 'var(--text-tertiary)' }}>Low Stock Reorder Alerts</div>
           <div style={{ fontSize: 'var(--font-2xl)', fontWeight: '800', color: 'var(--color-danger)', marginTop: '4px' }}>
-            {lowStockCount} Items
+            {lowStockCount} {lowStockCount === 1 ? 'Item' : 'Items'}
           </div>
           <div style={{ fontSize: '11px', color: 'var(--color-danger)', marginTop: '4px' }}>
             Below safety buffer threshold
@@ -102,7 +104,13 @@ export default function InventoryReportsPage() {
       </div>
 
       <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-        <div className="table-container">
+        {categoryRows.length === 0 ? (
+          <EmptyState
+            icon={Package}
+            title="No inventory to value"
+            description="Add raw materials to see stock value by category."
+          />
+        ) : <div className="table-container">
           <table className="table">
             <thead>
               <tr>
@@ -116,23 +124,16 @@ export default function InventoryReportsPage() {
               {categoryRows.map((inv, idx) => (
                 <tr key={idx}>
                   <td style={{ fontWeight: '700' }}>{inv.category}</td>
-                  <td>{inv.itemsCount} SKUs</td>
+                  <td>{inv.itemsCount} {inv.itemsCount === 1 ? 'SKU' : 'SKUs'}</td>
                   <td style={{ fontWeight: '800', color: 'var(--color-primary)' }}>{formatCurrency(inv.valuation)}</td>
                   <td>
                     <span className="badge badge-neutral">{inv.share}</span>
                   </td>
                 </tr>
               ))}
-              {categoryRows.length === 0 && (
-                <tr>
-                  <td colSpan={4} style={{ textAlign: 'center', padding: '24px', color: 'var(--text-tertiary)' }}>
-                    No raw materials found.
-                  </td>
-                </tr>
-              )}
             </tbody>
           </table>
-        </div>
+        </div>}
       </div>
     </div>
   );
