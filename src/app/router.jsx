@@ -7,9 +7,10 @@
  */
 
 import { lazy, Suspense } from 'react';
-import { createBrowserRouter, Navigate } from 'react-router-dom';
+import { createBrowserRouter, Navigate, Outlet } from 'react-router-dom';
 import AppLayout from '../layouts/AppLayout';
 import AuthLayout from '../layouts/AuthLayout';
+import RouteErrorPage from './RouteErrorPage';
 import { useAuth } from '../hooks/useAuth';
 import { isStaffOnly, isInventoryOnly, isBillingEnabled } from '../firebase/config';
 import { INVENTORY_HOME } from '../constants/inventoryRelease';
@@ -160,7 +161,7 @@ function AccessPendingRoute() {
 }
 
 // ─── Router Definition ─────────────────────────────────────
-export const router = createBrowserRouter([
+const routes = [
   // Customer Online Ordering & Tracking (Public/Google Login)
   { path: '/order', element: <StaffOnlyRoute><SuspenseWrap><CustomerOrderPage /></SuspenseWrap></StaffOnlyRoute> },
   { path: '/track/:orderId', element: <StaffOnlyRoute><SuspenseWrap><CustomerTrackOrderPage /></SuspenseWrap></StaffOnlyRoute> },
@@ -293,4 +294,10 @@ export const router = createBrowserRouter([
       </div>
     ),
   },
-]);
+];
+
+export const router = createBrowserRouter([{
+  element: <Outlet />,
+  errorElement: <RouteErrorPage />,
+  children: routes,
+}]);
