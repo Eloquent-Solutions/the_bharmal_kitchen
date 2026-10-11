@@ -10,9 +10,8 @@ import { useState, useCallback } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import { NAVIGATION } from '../../constants/navigation';
-import { BILLING_RELEASE_TABS, INVENTORY_RELEASE_TABS } from '../../constants/inventoryRelease';
+import { BILLING_RELEASE_ROLES, BILLING_RELEASE_TABS, INVENTORY_RELEASE_TABS } from '../../constants/inventoryRelease';
 import { isBillingEnabled, isInventoryOnly } from '../../firebase/config';
-import { ROLES } from '../../constants/roles';
 import {
   LayoutDashboard, ShoppingCart, ClipboardList, ChefHat,
   Grid3X3, UtensilsCrossed, Package, Truck, Users,
@@ -37,7 +36,7 @@ export default function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose
   }, []);
 
   const isActive = (path) => location.pathname.startsWith(path);
-  const billingRoleAllowed = [ROLES.OWNER, ROLES.ADMIN, ROLES.MANAGER].includes(role);
+  const billingRoleAllowed = BILLING_RELEASE_ROLES.has(role);
 
   // Filter top-level items by permission & admin-configured allowedTabs
   const filteredNav = NAVIGATION.filter((item) =>

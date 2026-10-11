@@ -10,7 +10,7 @@ import { Outlet, Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { isStaffOnly, isInventoryOnly, isBillingEnabled, isDemoMode } from '../firebase/config';
 import { getInventorySyncState } from '../services/dataService';
-import { BILLING_RELEASE_ROUTES, INVENTORY_HOME, INVENTORY_RELEASE_ROUTES, inventoryReleaseTabForPath } from '../constants/inventoryRelease';
+import { BILLING_RELEASE_ROLES, BILLING_RELEASE_ROUTES, INVENTORY_HOME, INVENTORY_RELEASE_ROUTES, inventoryReleaseTabForPath } from '../constants/inventoryRelease';
 import { PERMISSIONS, ROLES } from '../constants/roles';
 import Sidebar from '../components/Sidebar/Sidebar';
 import TopBar from '../components/TopBar/TopBar';
@@ -107,7 +107,7 @@ export default function AppLayout() {
           : PERMISSIONS.MANAGE_INVENTORY;
     const authorized = hasPermission(requiredPermission)
       && isTabAllowed(tab)
-      && (!billingPath || [ROLES.OWNER, ROLES.ADMIN, ROLES.MANAGER].includes(role))
+      && (!billingPath || BILLING_RELEASE_ROLES.has(role))
       && (!location.pathname.startsWith('/settings') || [ROLES.OWNER, ROLES.ADMIN].includes(role));
     if (!authorized) {
       return (

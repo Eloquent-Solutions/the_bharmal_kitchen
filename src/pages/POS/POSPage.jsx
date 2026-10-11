@@ -52,6 +52,7 @@ import { startOrderListener, stopOrderListener } from '../../services/realtimeOr
 import { formatCurrency } from '../../utils/formatters';
 import { calculateOrderTotals } from '../../utils/calculations';
 import { isBillingEnabled, isDemoMode, isInventoryOnly } from '../../firebase/config';
+import { PERMISSIONS } from '../../constants/roles';
 import { placePosOrderCloud } from '../../services/billingCloud';
 import { printBillingReceipt } from '../../utils/billingReceipt';
 import EmptyState from '../../components/EmptyState';
@@ -61,7 +62,8 @@ import './POSPage.css';
 export default function POSPage() {
   const billingRelease = isInventoryOnly && isBillingEnabled;
   const cloudBilling = billingRelease && !isDemoMode;
-  const { user } = useAuth();
+  const { user, hasPermission, isTabAllowed } = useAuth();
+  const canManageRecipes = hasPermission(PERMISSIONS.MANAGE_RECIPE) && isTabAllowed('inventory-recipes');
   const [categories, setCategories] = useState([]);
   const [items, setItems] = useState([]);
   const [recipes, setRecipes] = useState([]);
@@ -389,6 +391,10 @@ export default function POSPage() {
       toast.error('Choose Dine-in or Takeaway for staff billing.');
       return;
     }
+    if (billingRelease && orderType === 'Dine-in' && !selectedTable.trim()) {
+      toast.error('Enter a table number before saving a dine-in bill.');
+      return;
+    }
 
     setPlacingOrder(true);
     try {
@@ -499,6 +505,7 @@ export default function POSPage() {
               <input
                 type="text"
                 className="input"
+                aria-label="Table number"
                 placeholder="Table # (e.g. T-1)"
                 value={selectedTable}
                 onChange={(e) => setSelectedTable(e.target.value)}
@@ -618,13 +625,14 @@ export default function POSPage() {
             filteredDishes.map((item) => {
               const inCart = getItemCartQty(item.id);
               const portionInfo = billablePortions(item);
-              const isSoldOut = item.isAvailable === false || portionInfo.portionsAvailable === 0 || (billingRelease && !portionInfo.recipeFound);
+              const needsRecipe = billingRelease && !portionInfo.recipeFound;
+              const isSoldOut = item.isAvailable === false || portionInfo.portionsAvailable === 0;
 
               return (
                 <div
                   key={item.id}
-                  className={`pos-dish-card ${isSoldOut ? 'unavailable' : ''}`}
-                  onClick={() => !isSoldOut && addToCart(item)}
+                  className={`pos-dish-card ${isSoldOut ? 'unavailable' : ''} ${needsRecipe ? 'needs-setup' : ''}`}
+                  onClick={() => !isSoldOut && !needsRecipe && addToCart(item)}
                 >
                   <div className="pos-dish-image-wrapper">
                     <img
@@ -648,7 +656,9 @@ export default function POSPage() {
                       <div className="pos-dish-title">{item.name}</div>
                       <div className="pos-dish-desc">{item.description}</div>
 
-                      {portionInfo.recipeFound ? (
+                      {needsRecipe ? (
+                        <span className="pos-portion-tag low">Recipe needed to deduct stock</span>
+                      ) : portionInfo.recipeFound ? (
                         portionInfo.portionsAvailable > 10 ? (
                           <span className="pos-portion-tag good">● {portionInfo.portionsAvailable} Ready</span>
                         ) : portionInfo.portionsAvailable > 0 ? (
@@ -657,16 +667,27 @@ export default function POSPage() {
                           <span className="pos-portion-tag soldout">✕ Sold Out (Raw Stock)</span>
                         )
                       ) : (
-                        <span className="pos-portion-tag low">{billingRelease ? 'Linked recipe required' : 'Stock not tracked — add recipe'}</span>
+                        <span className="pos-portion-tag low">Stock not tracked — add recipe</span>
                       )}
                     </div>
 
                     <div className="pos-dish-footer" onClick={(e) => e.stopPropagation()}>
                       <span className="pos-dish-price">{formatCurrency(item.price)}</span>
 
-                      {isSoldOut ? (
+                      {needsRecipe ? (
+                        canManageRecipes ? (
+                          <Link
+                            className="pos-recipe-link"
+                            to={`/inventory/recipes?dishId=${encodeURIComponent(item.id)}`}
+                          >
+                            Set up recipe
+                          </Link>
+                        ) : (
+                          <span className="pos-recipe-help">Ask an owner to set up the recipe</span>
+                        )
+                      ) : isSoldOut ? (
                         <span className="badge badge-danger" style={{ fontSize: '10px' }}>
-                          {billingRelease && !portionInfo.recipeFound ? 'Recipe required' : 'Sold Out'}
+                          Sold Out
                         </span>
                       ) : inCart > 0 ? (
                         <div className="pos-qty-stepper">
@@ -697,7 +718,7 @@ export default function POSPage() {
           <div className="pos-cart-title">
             <ShoppingCart size={18} style={{ color: 'var(--color-primary)' }} />
             <span>
-              {orderType} {orderType === 'Dine-in' ? `(${selectedTable})` : ''}
+              {orderType}{orderType === 'Dine-in' ? (selectedTable.trim() ? ` (${selectedTable.trim()})` : ' — table needed') : ''}
             </span>
           </div>
           {cart.length > 0 && (

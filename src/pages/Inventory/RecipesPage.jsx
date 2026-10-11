@@ -8,6 +8,7 @@
  */
 
 import { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   BookOpen,
   Plus,
@@ -34,6 +35,7 @@ import { formatCurrency, formatRecordId } from '../../utils/formatters';
 import toast from 'react-hot-toast';
 
 export default function RecipesPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [recipes, setRecipes] = useState([]);
   const [menuItems, setMenuItems] = useState([]);
   const [rawMaterials, setRawMaterials] = useState([]);
@@ -60,6 +62,36 @@ export default function RecipesPage() {
     return () => events.forEach((event) => window.removeEventListener(event, refreshData));
   }, []);
 
+  useEffect(() => {
+    const dishId = searchParams.get('dishId');
+    if (!dishId || menuItems.length === 0) return;
+
+    const dish = menuItems.find((item) => item.id === dishId);
+    if (dish) {
+      const existing = recipes.find((recipe) =>
+        recipe.dishId === dish.id || recipe.dishName?.toLowerCase() === dish.name.toLowerCase()
+      );
+      setEditingRecipe(existing || null);
+      setFormData({
+        dishName: dish.name,
+        dishId: dish.id,
+        yieldServings: existing?.yieldServings || 1,
+        sellingPrice: dish.price,
+        instructions: existing?.instructions || '',
+        ingredients: existing?.ingredients ? [...existing.ingredients] : [],
+      });
+      setIsModalOpen(true);
+    } else {
+      toast.error('This dish is no longer in the menu.');
+    }
+
+    setSearchParams((previous) => {
+      const next = new URLSearchParams(previous);
+      next.delete('dishId');
+      return next;
+    }, { replace: true });
+  }, [menuItems, recipes, searchParams, setSearchParams]);
+
   const refreshData = () => {
     setRecipes(getRecipes());
     setMenuItems(getMenuItems());
@@ -73,25 +105,13 @@ export default function RecipesPage() {
       toast.error('Every menu dish already has a recipe. Add a dish in Menu first.');
       return;
     }
-    const defaultMat = rawMaterials.length > 0 ? rawMaterials[0] : null;
-
     setFormData({
       dishName: defaultDish ? defaultDish.name : '',
       dishId: defaultDish ? defaultDish.id : '',
       yieldServings: 1,
       sellingPrice: defaultDish ? defaultDish.price : 300,
       instructions: '',
-      ingredients: defaultMat
-        ? [
-            {
-              id: defaultMat.id,
-              name: defaultMat.name,
-              qty: '0.2',
-              unit: defaultMat.unit,
-              cost: Math.round(0.2 * defaultMat.unitCost),
-            },
-          ]
-        : [],
+      ingredients: [],
     });
     setIsModalOpen(true);
   };
@@ -115,17 +135,16 @@ export default function RecipesPage() {
   };
 
   const handleAddIngredientRow = () => {
-    const defaultMat = rawMaterials.length > 0 ? rawMaterials[0] : null;
     setFormData({
       ...formData,
       ingredients: [
         ...formData.ingredients,
         {
-          id: defaultMat ? defaultMat.id : '',
-          name: defaultMat ? defaultMat.name : '',
-          qty: '0.1',
-          unit: defaultMat ? defaultMat.unit : 'kg',
-          cost: defaultMat ? Math.round(0.1 * defaultMat.unitCost) : 0,
+          id: '',
+          name: '',
+          qty: '',
+          unit: '',
+          cost: 0,
         },
       ],
     });
@@ -138,10 +157,15 @@ export default function RecipesPage() {
 
   const handleRawMaterialSelect = (index, rawMaterialId) => {
     const mat = rawMaterials.find((m) => m.id === rawMaterialId);
-    if (!mat) return;
+    if (!mat) {
+      const updated = [...formData.ingredients];
+      updated[index] = { id: '', name: '', qty: updated[index].qty, unit: '', cost: 0 };
+      setFormData({ ...formData, ingredients: updated });
+      return;
+    }
 
     const updated = [...formData.ingredients];
-    const qtyNum = Number(updated[index].qty) || 0.1;
+    const qtyNum = Number(updated[index].qty) || 0;
     updated[index] = {
       ...updated[index],
       id: mat.id,
@@ -195,6 +219,10 @@ export default function RecipesPage() {
     }
     if (!Number.isInteger(Number(formData.yieldServings)) || Number(formData.yieldServings) < 1) {
       toast.error('Portion yield must be a whole number greater than zero.');
+      return;
+    }
+    if (formData.ingredients.length === 0) {
+      toast.error('Add at least one raw material before saving the recipe.');
       return;
     }
     if (formData.ingredients.some((ing) => !rawMaterials.some((m) => m.id === ing.id) || !Number.isFinite(Number(ing.qty)) || Number(ing.qty) <= 0)) {
@@ -464,6 +492,7 @@ export default function RecipesPage() {
                         onChange={(e) => handleRawMaterialSelect(idx, e.target.value)}
                         style={{ fontSize: '12px', height: '34px' }}
                       >
+                        <option value="">Select raw material</option>
                         {rawMaterials.map((rm) => (
                           <option key={rm.id} value={rm.id}>
                             {rm.name} ({rm.unit})

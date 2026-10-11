@@ -1,3 +1,5 @@
+import { ROLES } from './roles';
+
 // Routes offered in the first staff inventory release. This is a UI scope,
 // while Firestore rules remain the data access boundary.
 export const INVENTORY_HOME = '/inventory/materials';
@@ -39,6 +41,7 @@ export const BILLING_RELEASE_TABS = new Set([
   'menu', 'menu-items', 'menu-categories',
   'inventory-recipes',
 ]);
+export const BILLING_RELEASE_ROLES = new Set([ROLES.OWNER, ROLES.ADMIN, ROLES.MANAGER]);
 export const BILLING_RELEASE_ROUTES = new Set([
   '/pos', '/orders', '/orders/history',
   '/menu', '/menu/items', '/menu/categories',

@@ -28,13 +28,15 @@ import {
 } from '../../services/dataService';
 import { NAVIGATION } from '../../constants/navigation';
 import { ROLES } from '../../constants/roles';
-import { isDemoMode, isInventoryOnly } from '../../firebase/config';
-import { INVENTORY_RELEASE_TABS } from '../../constants/inventoryRelease';
+import { isBillingEnabled, isDemoMode, isInventoryOnly } from '../../firebase/config';
+import { BILLING_RELEASE_ROLES, BILLING_RELEASE_TABS, INVENTORY_RELEASE_TABS } from '../../constants/inventoryRelease';
 import { saveUserAccessCloud } from '../../services/inventoryCloud';
 import toast from 'react-hot-toast';
 
 // All available tab IDs from the navigation
-const VISIBLE_NAVIGATION = isInventoryOnly ? NAVIGATION.filter((n) => INVENTORY_RELEASE_TABS.has(n.id)) : NAVIGATION;
+const VISIBLE_NAVIGATION = isInventoryOnly
+  ? NAVIGATION.filter((n) => INVENTORY_RELEASE_TABS.has(n.id) || (isBillingEnabled && BILLING_RELEASE_TABS.has(n.id)))
+  : NAVIGATION;
 const ALL_TAB_IDS = VISIBLE_NAVIGATION.map((n) => n.id);
 
 const ROLE_OPTIONS = Object.values(ROLES);
@@ -61,6 +63,13 @@ const INVENTORY_ROLE_DESCRIPTIONS = {
   'Inventory Manager': 'Inventory, receiving, suppliers, and valuation.',
   Accountant: 'Inventory valuation report.',
 };
+
+const RELEASE_ROLE_DESCRIPTIONS = isBillingEnabled ? {
+  ...INVENTORY_ROLE_DESCRIPTIONS,
+  Owner: 'Inventory, customer POS billing, supplier bills, menu, and staff access.',
+  Manager: 'Inventory, customer POS billing, supplier bills, menu, and valuation.',
+  'Inventory Manager': 'Inventory, supplier bills, receiving, suppliers, and valuation.',
+} : INVENTORY_ROLE_DESCRIPTIONS;
 
 export default function UsersRolesPage() {
   const [users, setUsers] = useState([]);
@@ -273,9 +282,11 @@ export default function UsersRolesPage() {
       (u.role || '').toLowerCase().includes(search.toLowerCase())
   );
 
-  const TabGrid = ({ selectedTabs, onToggle }) => (
+  const TabGrid = ({ selectedTabs, onToggle, role }) => (
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: '6px', marginTop: '4px' }}>
-      {VISIBLE_NAVIGATION.map((nav) => {
+      {VISIBLE_NAVIGATION.filter((nav) =>
+        !isInventoryOnly || !isBillingEnabled || !BILLING_RELEASE_TABS.has(nav.id) || BILLING_RELEASE_ROLES.has(role)
+      ).map((nav) => {
         const isSelected = selectedTabs.includes(nav.id);
         return (
           <button
@@ -313,7 +324,9 @@ export default function UsersRolesPage() {
           <h2 style={{ fontSize: 'var(--font-2xl)', fontWeight: '700' }}>Users & Access Control</h2>
           <p style={{ color: 'var(--text-secondary)', fontSize: 'var(--font-sm)' }}>
             {isInventoryOnly
-              ? 'Ask each staff member to sign in first, then assign their inventory role here.'
+              ? isBillingEnabled
+                ? 'Ask each staff member to sign in first, then assign inventory and billing access here.'
+                : 'Ask each staff member to sign in first, then assign their inventory role here.'
               : isDemoMode
               ? 'Manage system users, assign roles, and control which tabs each user can see.'
               : 'Ask each staff member to sign in with Google first, then edit their account here to assign a role and tabs.'}
@@ -335,7 +348,7 @@ export default function UsersRolesPage() {
           <Shield size={16} style={{ color: 'var(--color-primary)' }} /> System Roles
         </h3>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '8px' }}>
-          {Object.entries(isInventoryOnly ? INVENTORY_ROLE_DESCRIPTIONS : ROLE_DESCRIPTIONS).map(([role, desc]) => (
+          {Object.entries(isInventoryOnly ? RELEASE_ROLE_DESCRIPTIONS : ROLE_DESCRIPTIONS).map(([role, desc]) => (
             <div key={role} style={{ padding: '8px', background: 'var(--bg-glass-subtle)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)' }}>
               <div style={{ fontWeight: '700', fontSize: '12px', marginBottom: '3px', color: 'var(--color-primary)' }}>{role}</div>
               <div style={{ fontSize: '10px', color: 'var(--text-tertiary)', lineHeight: 1.3 }}>{desc}</div>
@@ -407,7 +420,7 @@ export default function UsersRolesPage() {
                       </span>
                     </td>
                     <td style={{ fontSize: '10px', color: 'var(--text-tertiary)', maxWidth: '200px' }}>
-                      {(u.allowedTabs || ALL_TAB_IDS).length === ALL_TAB_IDS.length
+                      {['Owner', 'Admin'].includes(u.role) || (u.allowedTabs || ALL_TAB_IDS).length === ALL_TAB_IDS.length
                         ? 'All Tabs'
                         : (u.allowedTabs || []).map((t) => {
                             const nav = NAVIGATION.find((n) => n.id === t);
@@ -481,7 +494,7 @@ export default function UsersRolesPage() {
                   {(isInventoryOnly ? ROLE_OPTIONS.filter((r) => ['Owner', 'Manager', 'Inventory Manager', 'Chef', 'Accountant'].includes(r) || r === formData.role) : ROLE_OPTIONS).map((r) => <option key={r} value={r}>{r}</option>)}
                 </select>
                 <p style={{ fontSize: '10px', color: 'var(--text-tertiary)', marginTop: '4px' }}>
-                  {(isInventoryOnly ? INVENTORY_ROLE_DESCRIPTIONS[formData.role] : ROLE_DESCRIPTIONS[formData.role]) || ''}
+                  {(isInventoryOnly ? RELEASE_ROLE_DESCRIPTIONS[formData.role] : ROLE_DESCRIPTIONS[formData.role]) || ''}
                 </p>
               </div>
 
@@ -490,7 +503,12 @@ export default function UsersRolesPage() {
                 <p style={{ fontSize: '10px', color: 'var(--text-tertiary)', marginBottom: '4px' }}>
                   Select which tabs this user can see. Only highlighted tabs will be visible in their sidebar.
                 </p>
-                <TabGrid selectedTabs={formData.allowedTabs} onToggle={(id) => toggleTab(id)} />
+                {isInventoryOnly && isBillingEnabled && BILLING_RELEASE_ROLES.has(formData.role) && (
+                  <p style={{ fontSize: 'var(--font-xs)', color: 'var(--text-secondary)', marginBottom: 'var(--space-2)' }}>
+                    Select POS and Orders for customer billing. Menu allows dish setup; Purchasing allows supplier bills.
+                  </p>
+                )}
+                <TabGrid selectedTabs={formData.allowedTabs} onToggle={(id) => toggleTab(id)} role={formData.role} />
               </div>
 
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 'var(--space-2)', marginTop: 'var(--space-2)' }}>
@@ -528,7 +546,7 @@ export default function UsersRolesPage() {
 
               <div>
                 <label className="label">Allowed Tabs for This User</label>
-                <TabGrid selectedTabs={inviteTabs} onToggle={(id) => toggleTab(id, true)} />
+                <TabGrid selectedTabs={inviteTabs} onToggle={(id) => toggleTab(id, true)} role={inviteRole} />
               </div>
 
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 'var(--space-2)', marginTop: 'var(--space-2)' }}>
