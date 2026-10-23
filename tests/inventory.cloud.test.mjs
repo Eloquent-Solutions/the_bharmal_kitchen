@@ -121,6 +121,52 @@ test('a bill receives each item once and payment edit cannot receive stock again
   await assert.rejects(inventory.savePurchaseBillCloud({ ...bill, paymentStatus: 'pending', items: [{ ...items[0], qty: 10 }] }, bill, database), /cannot be edited/);
 });
 
+test('purchase orders receive partial and final deliveries exactly once', async () => {
+  const database = as('inventory');
+  await setDoc(doc(database, 'suppliers', 'supplier-1'), { id: 'supplier-1', name: 'Test supplier' });
+  const purchaseOrderId = 'PO-partial-test';
+  await inventory.savePurchaseOrderCloud({
+    id: purchaseOrderId, supplierId: 'supplier-1', expectedDate: '2026-10-12',
+    items: [{ type: 'raw_material', itemId: 'rice', qty: 5, unitCost: 30 },
+      { type: 'utensil', itemId: 'pot', qty: 2, unitCost: 120 }],
+  }, database);
+  const first = { id: 'request-first', supplier: 'Test supplier', invoiceNumber: 'PO-INV-1', purchaseOrderId,
+    items: [{ type: 'raw_material', itemId: 'rice', qty: 2, unitCost: 31 }] };
+  await inventory.savePurchaseBillCloud(first, null, database);
+  await inventory.savePurchaseBillCloud(first, null, database);
+  let order = (await getDoc(doc(database, 'purchase_orders', purchaseOrderId))).data();
+  assert.equal(order.status, 'partial');
+  assert.equal(order.items[0].receivedQty, 2);
+  assert.equal((await getDoc(doc(database, 'raw_materials', 'rice'))).data().currentStock, 12);
+  await assert.rejects(inventory.savePurchaseBillCloud({ ...first, id: 'request-over', invoiceNumber: 'PO-INV-OVER',
+    items: [{ type: 'raw_material', itemId: 'rice', qty: 4, unitCost: 31 }] }, null, database), /exceeds the outstanding/);
+  assert.equal((await getDoc(doc(database, 'raw_materials', 'rice'))).data().currentStock, 12);
+  await inventory.savePurchaseBillCloud({ id: 'request-final', supplier: 'Test supplier', invoiceNumber: 'PO-INV-2', purchaseOrderId,
+    items: [{ type: 'raw_material', itemId: 'rice', qty: 3, unitCost: 32 },
+      { type: 'utensil', itemId: 'pot', qty: 2, unitCost: 120 }] }, null, database);
+  order = (await getDoc(doc(database, 'purchase_orders', purchaseOrderId))).data();
+  assert.equal(order.status, 'received');
+  assert.deepEqual(order.items.map((item) => item.receivedQty), [5, 2]);
+  assert.equal((await getDoc(doc(database, 'raw_materials', 'rice'))).data().currentStock, 15);
+  assert.equal((await getDoc(doc(database, 'utensils', 'pot'))).data().totalQty, 5);
+  assert.equal((await getDocs(collection(database, 'purchase_bills'))).size, 2);
+});
+
+test('concurrent receipts cannot overreceive a purchase order', async () => {
+  const database = as('inventory');
+  await setDoc(doc(database, 'suppliers', 'supplier-1'), { id: 'supplier-1', name: 'Test supplier' });
+  await inventory.savePurchaseOrderCloud({ id: 'PO-concurrent', supplierId: 'supplier-1', expectedDate: '2026-10-12',
+    items: [{ type: 'raw_material', itemId: 'rice', qty: 5, unitCost: 30 }] }, database);
+  const results = await Promise.allSettled(['A', 'B'].map((suffix) => inventory.savePurchaseBillCloud({
+    id: `request-${suffix}`, supplier: 'Test supplier', invoiceNumber: `INV-${suffix}`,
+    purchaseOrderId: 'PO-concurrent', items: [{ type: 'raw_material', itemId: 'rice', qty: 4, unitCost: 30 }],
+  }, null, database)));
+  assert.equal(results.filter((result) => result.status === 'fulfilled').length, 1);
+  assert.equal((await getDoc(doc(database, 'purchase_orders', 'PO-concurrent'))).data().items[0].receivedQty, 4);
+  assert.equal((await getDoc(doc(database, 'raw_materials', 'rice'))).data().currentStock, 14);
+  assert.equal((await getDocs(collection(database, 'purchase_bills'))).size, 1);
+});
+
 test('Firestore rejects a stock transaction for a cashier', async () => {
   await assert.rejects(
     inventory.adjustRawMaterialStockCloud('rice', 1, 'add', 'Unauthorized', null, as('cashier')),

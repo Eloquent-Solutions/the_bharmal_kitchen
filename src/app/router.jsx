@@ -12,13 +12,14 @@ import AppLayout from '../layouts/AppLayout';
 import AuthLayout from '../layouts/AuthLayout';
 import RouteErrorPage from './RouteErrorPage';
 import { useAuth } from '../hooks/useAuth';
-import { isStaffOnly, isInventoryOnly, isBillingEnabled } from '../firebase/config';
+import { isStaffOnly, isInventoryOnly, isBillingEnabled, isCustomerTakeawayEnabled, isOperationsEnabled } from '../firebase/config';
 import { INVENTORY_HOME } from '../constants/inventoryRelease';
 
 // ─── Lazy-loaded Pages ─────────────────────────────────────
 
 // Customer Pages
 const CustomerOrderPage = lazy(() => import('../pages/Customer/CustomerOrderPage'));
+const CustomerTakeawayPage = lazy(() => import('../pages/Customer/CustomerTakeawayPage'));
 const CustomerTrackOrderPage = lazy(() => import('../pages/Customer/CustomerTrackOrderPage'));
 
 // Auth
@@ -102,6 +103,7 @@ const PrintQueuePage = lazy(() => import('../pages/Printing/PrintQueuePage'));
 
 // Settings
 const RestaurantSettingsPage = lazy(() => import('../pages/Settings/RestaurantSettingsPage'));
+const BillingSettingsPage = lazy(() => import('../pages/Settings/BillingSettingsPage'));
 const BranchesPage = lazy(() => import('../pages/Settings/BranchesPage'));
 const POSSettingsPage = lazy(() => import('../pages/Settings/POSSettingsPage'));
 const TaxSettingsPage = lazy(() => import('../pages/Settings/TaxSettingsPage'));
@@ -132,22 +134,29 @@ function RootRoute() {
   const { user, isCustomer, loading } = useAuth();
   if (loading) return <PageLoader />;
   if (!user) return <Navigate to={isStaffOnly ? '/login' : '/order'} replace />;
-  if (isCustomer) return <Navigate to={isStaffOnly ? '/access-pending' : '/order'} replace />;
+  if (isCustomer) return <Navigate to={isStaffOnly && !isCustomerTakeawayEnabled ? '/access-pending' : '/order'} replace />;
   return <Navigate to={isInventoryOnly ? INVENTORY_HOME : '/dashboard'} replace />;
 }
 
 function StaffOnlyRoute({ children }) {
   const { user, isCustomer, loading } = useAuth();
-  if (!isStaffOnly) return children;
+  if (!isStaffOnly || isCustomerTakeawayEnabled) return children;
   if (loading) return <PageLoader />;
   if (!user) return <Navigate to="/login" replace />;
   if (isCustomer) return <Navigate to="/access-pending" replace />;
   return <Navigate to={isInventoryOnly ? INVENTORY_HOME : '/dashboard'} replace />;
 }
 
+function CustomerTakeawayRoute() {
+  const { user, isCustomer, loading } = useAuth();
+  if (loading) return <PageLoader />;
+  if (user && !isCustomer) return <Navigate to="/pos" replace />;
+  return <SuspenseWrap><CustomerTakeawayPage /></SuspenseWrap>;
+}
+
 function AccessPendingRoute() {
   const { user, isCustomer, loading, signOut } = useAuth();
-  if (!isStaffOnly) return <Navigate to="/order" replace />;
+  if (!isStaffOnly || isCustomerTakeawayEnabled) return <Navigate to="/order" replace />;
   if (loading) return <PageLoader />;
   if (!user) return <Navigate to="/login" replace />;
   if (!isCustomer) return <Navigate to={isInventoryOnly ? INVENTORY_HOME : '/dashboard'} replace />;
@@ -163,9 +172,9 @@ function AccessPendingRoute() {
 // ─── Router Definition ─────────────────────────────────────
 const routes = [
   // Customer Online Ordering & Tracking (Public/Google Login)
-  { path: '/order', element: <StaffOnlyRoute><SuspenseWrap><CustomerOrderPage /></SuspenseWrap></StaffOnlyRoute> },
-  { path: '/track/:orderId', element: <StaffOnlyRoute><SuspenseWrap><CustomerTrackOrderPage /></SuspenseWrap></StaffOnlyRoute> },
-  { path: '/track', element: <StaffOnlyRoute><SuspenseWrap><CustomerTrackOrderPage /></SuspenseWrap></StaffOnlyRoute> },
+  { path: '/order', element: isCustomerTakeawayEnabled ? <CustomerTakeawayRoute /> : <StaffOnlyRoute><SuspenseWrap><CustomerOrderPage /></SuspenseWrap></StaffOnlyRoute> },
+  { path: '/track/:orderId', element: isCustomerTakeawayEnabled ? <Navigate to="/order" replace /> : <StaffOnlyRoute><SuspenseWrap><CustomerTrackOrderPage /></SuspenseWrap></StaffOnlyRoute> },
+  { path: '/track', element: isCustomerTakeawayEnabled ? <Navigate to="/order" replace /> : <StaffOnlyRoute><SuspenseWrap><CustomerTrackOrderPage /></SuspenseWrap></StaffOnlyRoute> },
   { path: '/access-pending', element: <AccessPendingRoute /> },
 
   // Auth routes
@@ -188,7 +197,7 @@ const routes = [
       { path: '/pos', element: <SuspenseWrap><POSPage /></SuspenseWrap> },
 
       // Orders
-      { path: '/orders', element: <Navigate to={isInventoryOnly && isBillingEnabled ? '/orders/history' : '/orders/active'} replace /> },
+      { path: '/orders', element: <Navigate to={isOperationsEnabled ? '/orders/active' : isInventoryOnly && isBillingEnabled ? '/orders/history' : '/orders/active'} replace /> },
       { path: '/orders/active', element: <SuspenseWrap><ActiveOrdersPage /></SuspenseWrap> },
       { path: '/orders/history', element: <SuspenseWrap><OrderHistoryPage /></SuspenseWrap> },
 
@@ -267,6 +276,7 @@ const routes = [
       // Settings
       { path: '/settings', element: <Navigate to={isInventoryOnly ? '/settings/users' : '/settings/restaurant'} replace /> },
       { path: '/settings/restaurant', element: <SuspenseWrap><RestaurantSettingsPage /></SuspenseWrap> },
+      { path: '/settings/billing', element: <SuspenseWrap><BillingSettingsPage /></SuspenseWrap> },
       { path: '/settings/branches', element: <SuspenseWrap><BranchesPage /></SuspenseWrap> },
       { path: '/settings/pos', element: <SuspenseWrap><POSSettingsPage /></SuspenseWrap> },
       { path: '/settings/tax', element: <SuspenseWrap><TaxSettingsPage /></SuspenseWrap> },

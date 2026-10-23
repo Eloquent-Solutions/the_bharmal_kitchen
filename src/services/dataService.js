@@ -18,7 +18,7 @@ import {
   serverTimestamp,
   onSnapshot,
 } from 'firebase/firestore';
-import { auth, db, isDemoMode, isInventoryOnly, isBillingEnabled } from '../firebase/config';
+import { auth, db, isDemoMode, isInventoryOnly, isBillingEnabled, isOperationsEnabled } from '../firebase/config';
 import { formatRecordId } from '../utils/recordIds';
 
 const inventoryId = (prefix) => `${prefix}-${crypto.randomUUID()}`;
@@ -56,7 +56,7 @@ export async function initializeFirebaseDataSync(shouldStop = () => false, role 
     { col: 'supply_categories', key: 'tbk_supply_categories', event: 'tbk_supply_categories_updated' },
     { col: 'kitchen_stations', key: 'tbk_kitchen_stations', event: 'tbk_kitchen_stations_updated' },
     { col: 'purchase_bills', key: 'tbk_purchase_bills', event: 'tbk_purchase_bills_updated', realtime: true },
-    { col: 'purchase_orders', key: 'tbk_purchase_orders', event: 'tbk_purchase_orders_updated' },
+    { col: 'purchase_orders', key: 'tbk_purchase_orders', event: 'tbk_purchase_orders_updated', realtime: true },
     { col: 'stock_movements', key: 'tbk_stock_movements', event: 'tbk_stock_movements_updated', realtime: true },
     { col: 'wastage', key: 'tbk_wastage', event: 'tbk_wastage_updated', realtime: true },
     { col: 'promotions', key: 'tbk_promotions', event: 'tbk_promotions_updated' },
@@ -90,21 +90,31 @@ export async function initializeFirebaseDataSync(shouldStop = () => false, role 
     { id: 'loyalty', key: 'tbk_loyalty_tiers' },
   ];
 
+  const unsubscribers = [];
   for (const s of (isInventoryOnly ? (isBillingEnabled ? settingsDocs.filter(({ id }) => id === 'restaurant' || id === 'channels') : []) : settingsDocs)) {
-    if (shouldStop()) return () => {};
+    if (shouldStop()) return () => unsubscribers.forEach((unsubscribe) => unsubscribe());
     try {
       const snap = await getDoc(doc(db, 'settings', s.id));
-      if (shouldStop()) return () => {};
+      if (shouldStop()) return () => unsubscribers.forEach((unsubscribe) => unsubscribe());
       if (snap.exists()) {
         const val = snap.data();
         localStorage.setItem(storageKey(s.key), JSON.stringify(val));
+        if (s.id === 'restaurant') window.dispatchEvent(new CustomEvent('tbk_restaurant_settings_updated', { detail: val }));
+      }
+      if (s.id === 'restaurant') {
+        unsubscribers.push(onSnapshot(doc(db, 'settings', s.id), (snapshot) => {
+          if (shouldStop() || !snapshot.exists()) return;
+          const val = snapshot.data();
+          localStorage.setItem(storageKey(s.key), JSON.stringify(val));
+          window.dispatchEvent(new CustomEvent('tbk_restaurant_settings_updated', { detail: val }));
+        }, (error) => {
+          if (!shouldStop() && isInventoryOnly) updateInventorySyncState({ ready: false, error: `Could not synchronize billing settings: ${error.message}` });
+        }));
       }
     } catch (e) {
       // Ignore initial read note
     }
   }
-
-  const unsubscribers = [];
 
   const inventoryCollections = new Set(
     ['Owner', 'Admin', 'Manager', 'Chef', 'Kitchen Staff', 'Inventory Manager', 'Accountant'].includes(role)
@@ -114,10 +124,14 @@ export async function initializeFirebaseDataSync(shouldStop = () => false, role 
   if (['Owner', 'Admin', 'Manager', 'Inventory Manager'].includes(role)) {
     inventoryCollections.add('suppliers');
     inventoryCollections.add('purchase_bills');
+    inventoryCollections.add('purchase_orders');
   }
   if (['Owner', 'Admin'].includes(role)) inventoryCollections.add('users');
   if (isBillingEnabled && ['Owner', 'Admin', 'Manager'].includes(role)) {
     ['menu_items', 'categories', 'recipes', 'orders', 'tables'].forEach((col) => inventoryCollections.add(col));
+  }
+  if (isOperationsEnabled && ['Owner', 'Admin', 'Manager', 'Chef', 'Kitchen Staff'].includes(role)) {
+    ['orders', 'kots', 'kitchen_stations'].forEach((col) => inventoryCollections.add(col));
   }
   for (const item of (isInventoryOnly ? collectionsToSync.filter(({ col }) => inventoryCollections.has(col)) : collectionsToSync)) {
     if (shouldStop()) break;
@@ -2151,11 +2165,16 @@ export function getRestaurantSettings() {
 
 export function saveRestaurantSettings(settings) {
   setStored('tbk_restaurant_settings', settings);
-  syncDocToFirestore('settings', 'profile', settings);
+  syncDocToFirestore('settings', 'restaurant', settings);
   try {
     window.dispatchEvent(new CustomEvent('tbk_restaurant_settings_updated', { detail: settings }));
   } catch (e) { }
   return settings;
+}
+
+export function cacheRestaurantSettings(settings) {
+  setStored('tbk_restaurant_settings', settings);
+  window.dispatchEvent(new CustomEvent('tbk_restaurant_settings_updated', { detail: settings }));
 }
 
 // ─── POS Terminal Rules & Workflow API ─────────────────────────

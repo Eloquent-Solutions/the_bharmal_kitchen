@@ -19,6 +19,7 @@ import toast from 'react-hot-toast';
 import { isDemoMode, isInventoryOnly } from '../../firebase/config';
 import { saveWastageCloud } from '../../services/inventoryCloud';
 import EmptyState from '../../components/EmptyState';
+import LoadingButton from '../../components/LoadingButton';
 
 export default function WastagePage() {
   const [wastage, setWastage] = useState([]);
@@ -141,11 +142,11 @@ export default function WastagePage() {
 
       {/* Modal */}
       {isModalOpen && (
-        <div className="modal-backdrop" onClick={() => setIsModalOpen(false)}>
+        <div className="modal-backdrop" onClick={() => { if (!saving) setIsModalOpen(false); }}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '440px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-3)' }}>
               <h3 style={{ fontSize: 'var(--font-xl)', fontWeight: '700' }}>Log Wastage Event</h3>
-              <button className="btn-icon" onClick={() => setIsModalOpen(false)}>✕</button>
+              <button className="btn-icon" disabled={saving} onClick={() => setIsModalOpen(false)}>✕</button>
             </div>
 
             <form onSubmit={handleAddWastage} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
@@ -196,12 +197,12 @@ export default function WastagePage() {
               </div>
 
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 'var(--space-2)', marginTop: 'var(--space-3)' }}>
-                <button type="button" className="btn btn-secondary" onClick={() => setIsModalOpen(false)}>
+                <button type="button" className="btn btn-secondary" disabled={saving} onClick={() => setIsModalOpen(false)}>
                   Cancel
                 </button>
-                <button type="submit" className="btn btn-primary" disabled={saving}>
+                <LoadingButton type="submit" className="btn btn-primary" loading={saving} loadingText="Saving wastage…">
                   Save Wastage Record
-                </button>
+                </LoadingButton>
               </div>
             </form>
           </div>

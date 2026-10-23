@@ -25,6 +25,7 @@ import { formatCurrency, formatRecordId } from '../../utils/formatters';
 import toast from 'react-hot-toast';
 import { isDemoMode, isInventoryOnly } from '../../firebase/config';
 import { saveUtensilCloud } from '../../services/inventoryCloud';
+import LoadingButton from '../../components/LoadingButton';
 
 export default function UtensilsPage() {
   const [utensils, setUtensils] = useState([]);
@@ -240,7 +241,7 @@ export default function UtensilsPage() {
 
       {/* Add / Edit Modal */}
       {isModalOpen && (
-        <div className="modal-backdrop" onClick={() => setIsModalOpen(false)}>
+        <div className="modal-backdrop" onClick={() => { if (!saving) setIsModalOpen(false); }}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '480px' }}>
             <h3 style={{ fontSize: 'var(--font-xl)', fontWeight: '700', marginBottom: '8px' }}>
               {editingUtensil ? 'Edit Utensil Asset' : 'Add New Utensil Asset'}
@@ -333,8 +334,8 @@ export default function UtensilsPage() {
               </div>
 
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 'var(--space-2)', marginTop: 'var(--space-2)' }}>
-                <button type="button" className="btn btn-secondary" onClick={() => setIsModalOpen(false)}>Cancel</button>
-                <button type="submit" className="btn btn-primary" disabled={saving}>{editingUtensil ? 'Save Changes' : 'Create Asset'}</button>
+                <button type="button" className="btn btn-secondary" disabled={saving} onClick={() => setIsModalOpen(false)}>Cancel</button>
+                <LoadingButton type="submit" className="btn btn-primary" loading={saving} loadingText={editingUtensil ? 'Saving changes…' : 'Creating asset…'}>{editingUtensil ? 'Save Changes' : 'Create Asset'}</LoadingButton>
               </div>
             </form>
           </div>

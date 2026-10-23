@@ -124,22 +124,8 @@ export default function PrintersPage() {
     toast.success('Printer removed');
   };
 
-  const testConnection = async (printer) => {
-    setTestingId(printer.id);
-    toast.loading(`Testing connection to ${printer.name}...`, { id: 'test_printer' });
-
-    // Simulate connection test
-    await new Promise((r) => setTimeout(r, 2000));
-
-    const success = Math.random() > 0.3; // Simulate response
-    savePrinter({ ...printer, status: success ? 'online' : 'offline', lastTested: new Date().toISOString() });
-    setTestingId(null);
-
-    if (success) {
-      toast.success(`✓ ${printer.name} is online and ready!`, { id: 'test_printer' });
-    } else {
-      toast.error(`✗ Cannot reach ${printer.name}. Check power & network.`, { id: 'test_printer' });
-    }
+  const testConnection = () => {
+    toast.error('Direct printer connection testing needs a local print bridge. Use the browser print dialog for bills and kitchen tickets.');
   };
 
   const handlePairBluetooth = async () => {

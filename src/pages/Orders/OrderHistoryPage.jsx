@@ -27,6 +27,7 @@ import { markPosOrderPaidCloud } from '../../services/billingCloud';
 import { printBillingReceipt } from '../../utils/billingReceipt';
 import { formatCurrency, formatDateTime } from '../../utils/formatters';
 import toast from 'react-hot-toast';
+import LoadingButton from '../../components/LoadingButton';
 
 export default function OrderHistoryPage() {
   const [orders, setOrders] = useState([]);
@@ -261,10 +262,10 @@ export default function OrderHistoryPage() {
                             }}>
                             <option value="cash">Cash</option><option value="upi">UPI</option>
                           </select>
-                          <button className="btn btn-secondary btn-sm" disabled={payingOrderId === order.id} onClick={() => handleMarkPaid(order)}>
-                            {payingOrderId === order.id ? 'Recording...' : confirmPaymentOrderId === order.id ? `Confirm ${formatCurrency(order.total)} received` : 'Record Payment'}
-                          </button>
-                          {confirmPaymentOrderId === order.id && <button className="btn btn-ghost btn-sm" onClick={() => setConfirmPaymentOrderId(null)}>Cancel</button>}
+                          <LoadingButton className="btn btn-secondary btn-sm" disabled={Boolean(payingOrderId)} loading={payingOrderId === order.id} loadingText="Recording payment…" onClick={() => handleMarkPaid(order)}>
+                            {confirmPaymentOrderId === order.id ? `Confirm ${formatCurrency(order.total)} received` : 'Record Payment'}
+                          </LoadingButton>
+                          {confirmPaymentOrderId === order.id && <button className="btn btn-ghost btn-sm" disabled={Boolean(payingOrderId)} onClick={() => setConfirmPaymentOrderId(null)}>Cancel</button>}
                         </>}
                         <button
                           className="btn-icon"

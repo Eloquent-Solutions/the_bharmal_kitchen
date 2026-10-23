@@ -1,8 +1,8 @@
-# Staff inventory and billing rollout on Vercel and Firebase
+# Inventory, billing, and takeaway rollout on Vercel and Firebase
 
-The client release is **staff-only**, with inventory, supplier purchase bills, and POS billing enabled. Vercel serves the Vite site; Firebase provides Authentication and Firestore. The production Firebase project must be separate from the project used in `.env.local`. Billing flow details and limitations are in [BILLING_REVIEW.md](BILLING_REVIEW.md).
+The client release has staff inventory, supplier purchase bills, POS billing, kitchen operations, and Google sign-in pickup requests. Vercel serves the Vite site; Firebase provides Authentication and Firestore. The production Firebase project must be separate from the project used in `.env.local`. Billing flow details and limitations are in [BILLING_REVIEW.md](BILLING_REVIEW.md).
 
-The client view contains raw materials, stock ledger, wastage, stock count, utensils, suppliers, purchase bills, inventory valuation, POS, order history, menu dishes, categories, recipes, and owner user management. POS and its menu setup are limited to Owner, Admin, and Manager accounts with assigned tabs. Purchase orders, public customer ordering, finance, and other modules are hidden and direct routes redirect to inventory. These switches set the user-interface scope; Firestore rules enforce data access.
+The client view contains raw materials, stock ledger, wastage, stock count, utensils, suppliers, purchase bills, purchase orders, inventory valuation, POS, active orders, KDS/KOT, order history, menu dishes, categories, recipes, and owner user management. POS and menu setup are limited to Owner, Admin, and Manager accounts with assigned tabs. Signed-in customers can submit pickup requests at `/order`; staff validate price, recipe, and stock before confirming a bill. Finance and other unfinished modules remain hidden. These switches set the user-interface scope; Firestore rules enforce data access.
 
 ## 1. Create the production Firebase project
 
@@ -26,6 +26,8 @@ In **Project Settings → Environment Variables**, set these for **Production** 
 | `VITE_STAFF_ONLY` | `true` |
 | `VITE_INVENTORY_ONLY` | `true` |
 | `VITE_BILLING_ENABLED` | `true` |
+| `VITE_OPERATIONS_ENABLED` | `true` |
+| `VITE_CUSTOMER_TAKEAWAY_ENABLED` | `true` |
 | `VITE_FIREBASE_API_KEY` | Production Web app `apiKey` |
 | `VITE_FIREBASE_AUTH_DOMAIN` | Production Web app `authDomain` |
 | `VITE_FIREBASE_PROJECT_ID` | Production Web app `projectId` |
@@ -39,7 +41,7 @@ The Vercel build fails if required Firebase values or staff, inventory, or billi
 
 ## 3. Secure and verify Firestore
 
-`firestore.rules` now contains role-based rules for the staff-only release. The `.firebaserc` default still names the development project, so always specify the production project ID when deploying rules:
+`firestore.rules` contains role-based rules for staff and customer pickup requests. The `.firebaserc` default still names the development project, so always specify the production project ID when deploying rules:
 
 ```bash
 firebase login
@@ -48,14 +50,14 @@ firebase deploy --only firestore:rules --project YOUR_PRODUCTION_PROJECT_ID
 
 With the Firebase CLI installed, run `npm run test:rules`, `npm run test:inventory:cloud`, and `npm run test:billing:cloud` locally before deploying. The emulator tests check access rules, concurrent stock changes, wastage/count validation, bill inwarding once, POS payment status, and owner role assignment. Compare the rules currently shown in Firebase Console with this file; editing this file does **not** update deployed rules.
 
-The app's route guard is only a user-interface control. Firestore rules are the actual data access boundary. The staff-only build disables public signup, ordering, and order tracking routes. It does not implement a public ordering or payment system.
+The app's route guard is only a user-interface control. Firestore rules are the actual data access boundary. Customer requests require Google sign-in and remain pending until staff confirm them. Payment is collected at pickup; no online payment gateway is connected.
 
 ## 4. Acceptance checks before going live
 
 - Build, lint, and inventory flow tests pass: `npm run build`, `npm run lint`, and `npm run test:inventory`.
 - Owner sign-in reaches `/inventory/materials`; inventory, purchasing, POS (`/pos`), order history (`/orders/history`), menu dishes (`/menu/items`), categories (`/menu/categories`), and recipes (`/inventory/recipes`) load from the production project. A direct visit to `/dashboard` redirects to inventory.
 - A staff member receives only the expected role and tabs. A customer or unsigned visitor cannot reach staff pages or read Firestore data.
-- The production project starts without bundled sample orders, customers, stock, or staff records.
+- Production has the imported development menu, inventory, recipes, and ledger. The development test order and its stock deduction were excluded; the original production staff profiles and three purchase bills were retained.
 - Inventory and bill changes remain correct across two browsers after refresh. Check stock counts, supplier bills, POS bills, and wastage with disposable test records, including simultaneous adjustments from two staff sessions.
 - A stock save shows success only after the Firestore transaction commits. Sync failures block the inventory view. Verify the stock and ledger documents in Firebase Console after the smoke test.
 
@@ -65,4 +67,4 @@ The released stock actions use Firestore transactions and live listeners. Firest
 
 Keep `main` as the stable client version. Start each other module from `main` on its own branch (for example `codex/recipes-menu` or `codex/finance`); use Vercel Preview and the development Firebase project for those branches. Merge each module after its workflow and permissions are checked. Keep `VITE_INVENTORY_ONLY=true` in Production until the client approves exposing another module.
 
-POS records staff-entered bills and cash or manually confirmed payments. No payment gateway is connected. Do not accept public customer orders or online payments through this release; those workflows need separate server-side payment verification, order validation, and security review.
+POS records staff-entered bills and cash or manually confirmed payments. Google customers can request takeaway for pay at pickup. The imported menu has 22 available dishes but only two linked recipes; staff confirmation of any other dish is blocked until its recipe is set up. Recipe readiness and stock should be checked before advertising an item. No payment gateway is connected. Browser printing uses the system print dialog; silent thermal printing and routing are not connected.

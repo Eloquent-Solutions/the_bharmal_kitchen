@@ -6,6 +6,9 @@ const escapeHtml = (value) => String(value ?? '').replace(/[&<>"']/g, (character
 
 export function buildBillingReceiptHtml(order) {
   if (!order?.id || !Array.isArray(order.items)) throw new Error('A saved bill is required to print a receipt.');
+  const business = order.receiptBusiness || {};
+  const details = [business.address, business.phone, business.email, business.gstin && `GSTIN: ${business.gstin}`, business.fssai && `FSSAI: ${business.fssai}`]
+    .filter(Boolean).map((line) => `<p>${escapeHtml(line)}</p>`).join('');
   const lines = order.items.map((item) => {
     const qty = Number(item.qty ?? item.quantity) || 0;
     return `<tr><td>${escapeHtml(item.name)}</td><td>${qty}</td><td>${escapeHtml(formatCurrency(item.price))}</td><td>${escapeHtml(formatCurrency(qty * Number(item.price || 0)))}</td></tr>`;
@@ -21,7 +24,7 @@ export function buildBillingReceiptHtml(order) {
   h1{text-align:center;font-size:17px;margin:4px 0}p{text-align:center;margin:4px 0}.row{display:flex;justify-content:space-between;margin:5px 0}
   table{width:100%;border-collapse:collapse;margin:10px 0}th,td{text-align:left;border-bottom:1px dashed #999;padding:5px 2px}td:nth-child(n+2),th:nth-child(n+2){text-align:right}
   .total{font-size:16px;font-weight:bold;border-top:1px solid #111;padding-top:8px}.status{text-align:center;font-weight:bold;margin-top:12px}</style></head><body>
-  <h1>The Bharmals Kitchen</h1><p>Bill ${escapeHtml(order.id)}</p>
+  <h1>${escapeHtml(business.name || 'The Bharmals Kitchen')}</h1>${details}<p>Bill ${escapeHtml(order.id)}</p>
   <div class="row"><span>Date</span><span>${escapeHtml(order.createdAt ? new Date(order.createdAt).toLocaleString('en-IN') : '')}</span></div>
   <div class="row"><span>Customer</span><span>${escapeHtml(order.customer || 'Walk-in Guest')}</span></div>
   <div class="row"><span>Type</span><span>${escapeHtml((order.orderType || '').replace('_', ' '))}${order.table ? ` · ${escapeHtml(order.table)}` : ''}</span></div>

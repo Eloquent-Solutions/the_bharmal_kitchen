@@ -43,14 +43,19 @@ import {
 import { playSwiggyZomatoTone } from '../../services/notificationService';
 import { formatCurrency, formatTime } from '../../utils/formatters';
 import toast from 'react-hot-toast';
+import { isDemoMode, isInventoryOnly, isOperationsEnabled } from '../../firebase/config';
+import { advanceOrderCloud } from '../../services/kitchenCloud';
+import LoadingButton from '../../components/LoadingButton';
 
 export default function KDSPage() {
+  const cloudOperations = !isDemoMode && isInventoryOnly && isOperationsEnabled;
   const [orders, setOrders] = useState([]);
   const [stations, setStations] = useState([]);
   const [selectedStation, setSelectedStation] = useState('All');
   const [statusFilter, setStatusFilter] = useState('active'); // 'active' | 'cooking' | 'ready' | 'all'
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [currentTime, setCurrentTime] = useState(new Date());
+  const [busyOrderId, setBusyOrderId] = useState(null);
 
   // Station Management Modal state
   const [isStationModalOpen, setIsStationModalOpen] = useState(false);
@@ -68,7 +73,7 @@ export default function KDSPage() {
       (updatedOrders) => {
         setOrders(updatedOrders);
       },
-      { viewRole: 'chef', soundEnabled: true }
+      { viewRole: 'chef', soundEnabled }
     );
 
     const handleDataUpdate = () => refreshData();
@@ -79,7 +84,7 @@ export default function KDSPage() {
       stopOrderListener();
       window.removeEventListener('storage', handleDataUpdate);
     };
-  }, []);
+  }, [soundEnabled]);
 
   const refreshData = () => {
     setOrders(getOrders());
@@ -109,14 +114,19 @@ export default function KDSPage() {
     });
   }, [orders, statusFilter, selectedStation]);
 
-  const handleStatusChange = (orderId, newStatus) => {
-    updateOrderStatus(orderId, newStatus);
-    setOrders((prev) =>
-      prev.map((o) => (o.id === orderId ? { ...o, status: newStatus } : o))
-    );
-    if (newStatus === 'cooking') toast.success(`Order #${orderId} moved to Cooking`);
-    if (newStatus === 'ready') toast.success(`Order #${orderId} marked as Ready / Cooked!`);
-    if (newStatus === 'completed') toast.success(`Order #${orderId} bumped / completed`);
+  const handleStatusChange = async (orderId, newStatus) => {
+    if (busyOrderId) return;
+    setBusyOrderId(orderId);
+    try {
+      if (!isDemoMode && isInventoryOnly && isOperationsEnabled) await advanceOrderCloud(orderId, newStatus);
+      else updateOrderStatus(orderId, newStatus);
+      setOrders((prev) => prev.map((o) => o.id === orderId ? { ...o, status: newStatus } : o));
+      toast.success(`Order #${orderId} marked ${newStatus}`);
+    } catch (error) {
+      toast.error(error.message);
+    } finally {
+      setBusyOrderId(null);
+    }
   };
 
   const handleTestSound = () => {
@@ -201,9 +211,9 @@ export default function KDSPage() {
             <Volume2 size={15} style={{ color: 'var(--color-warning)' }} /> Test Chime
           </button>
 
-          <button className="btn btn-secondary btn-sm" onClick={handleOpenAddStation}>
+          {!cloudOperations && <button className="btn btn-secondary btn-sm" onClick={handleOpenAddStation}>
             <Plus size={14} /> Add Station
-          </button>
+          </button>}
 
           <div style={{ background: 'var(--bg-glass)', padding: '6px 12px', borderRadius: 'var(--radius-md)', fontSize: '12px', fontWeight: '700', color: 'var(--text-primary)', border: '1px solid var(--border-color)' }}>
             🕒 {currentTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
@@ -230,22 +240,22 @@ export default function KDSPage() {
               >
                 {stn.name}
               </button>
-              <button
+              {!cloudOperations && <button
                 className="btn-icon"
                 onClick={() => handleOpenEditStation(stn)}
                 title="Edit Station"
                 style={{ width: '26px', height: '26px' }}
               >
                 <Edit2 size={11} />
-              </button>
-              <button
+              </button>}
+              {!cloudOperations && <button
                 className="btn-icon"
                 onClick={() => handleDeleteStation(stn.id, stn.name)}
                 title="Delete Station"
                 style={{ width: '26px', height: '26px', color: 'var(--color-danger)' }}
               >
                 <Trash2 size={11} />
-              </button>
+              </button>}
             </div>
           ))}
         </div>
@@ -360,31 +370,42 @@ export default function KDSPage() {
                       🛵 Rider: {order.deliveryInstructions}
                     </div>
                   )}
+                  {order.notes && (
+                    <div style={{ background: 'var(--bg-surface)', padding: '6px 10px', borderRadius: 'var(--radius-sm)', fontSize: '11px', color: 'var(--color-warning)' }}>
+                      Kitchen note: {order.notes}
+                    </div>
+                  )}
                 </div>
 
                 {/* Action Footer */}
                 <div style={{ padding: 'var(--space-3) var(--space-4)', background: 'var(--bg-glass-subtle)', borderTop: '1px solid var(--border-color)', display: 'flex', gap: 'var(--space-2)' }}>
                   {order.status === 'received' && (
-                    <button
+                    <LoadingButton
                       className="btn btn-primary"
                       style={{ flex: 1, fontWeight: '700', fontSize: '12px' }}
+                      loading={busyOrderId === order.id}
+                      loadingText="Updating…"
+                      disabled={busyOrderId != null}
                       onClick={() => handleStatusChange(order.id, 'cooking')}
                     >
                       <Flame size={14} /> Start Cooking
-                    </button>
+                    </LoadingButton>
                   )}
 
                   {order.status === 'cooking' && (
-                    <button
+                    <LoadingButton
                       className="btn btn-success"
                       style={{ flex: 1, fontWeight: '700', fontSize: '12px' }}
+                      loading={busyOrderId === order.id}
+                      loadingText="Updating…"
+                      disabled={busyOrderId != null}
                       onClick={() => handleStatusChange(order.id, 'ready')}
                     >
                       <CheckCircle2 size={14} /> Mark Ready / Cooked
-                    </button>
+                    </LoadingButton>
                   )}
 
-                  {order.status === 'ready' && (
+                  {order.status === 'ready' && !cloudOperations && (
                     <button
                       className="btn btn-secondary"
                       style={{ flex: 1, fontWeight: '700', fontSize: '12px' }}
@@ -394,13 +415,13 @@ export default function KDSPage() {
                     </button>
                   )}
 
-                  <button
+                  {!cloudOperations && <button
                     className="btn-icon"
                     onClick={() => handleStatusChange(order.id, 'received')}
                     title="Reset to Incoming"
                   >
                     <RotateCcw size={14} />
-                  </button>
+                  </button>}
                 </div>
               </div>
             );
@@ -409,7 +430,7 @@ export default function KDSPage() {
       )}
 
       {/* ── Add/Edit Station Modal ── */}
-      {isStationModalOpen && (
+      {!cloudOperations && isStationModalOpen && (
         <div className="modal-backdrop" onClick={() => setIsStationModalOpen(false)}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '440px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-4)' }}>

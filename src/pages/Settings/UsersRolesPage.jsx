@@ -28,14 +28,15 @@ import {
 } from '../../services/dataService';
 import { NAVIGATION } from '../../constants/navigation';
 import { ROLES } from '../../constants/roles';
-import { isBillingEnabled, isDemoMode, isInventoryOnly } from '../../firebase/config';
-import { BILLING_RELEASE_ROLES, BILLING_RELEASE_TABS, INVENTORY_RELEASE_TABS } from '../../constants/inventoryRelease';
+import { isBillingEnabled, isDemoMode, isInventoryOnly, isOperationsEnabled } from '../../firebase/config';
+import { BILLING_RELEASE_ROLES, BILLING_RELEASE_TABS, INVENTORY_RELEASE_TABS, OPERATIONS_RELEASE_TABS } from '../../constants/inventoryRelease';
 import { saveUserAccessCloud } from '../../services/inventoryCloud';
 import toast from 'react-hot-toast';
+import LoadingButton from '../../components/LoadingButton';
 
 // All available tab IDs from the navigation
 const VISIBLE_NAVIGATION = isInventoryOnly
-  ? NAVIGATION.filter((n) => INVENTORY_RELEASE_TABS.has(n.id) || (isBillingEnabled && BILLING_RELEASE_TABS.has(n.id)))
+  ? NAVIGATION.filter((n) => INVENTORY_RELEASE_TABS.has(n.id) || (isBillingEnabled && BILLING_RELEASE_TABS.has(n.id)) || (isOperationsEnabled && OPERATIONS_RELEASE_TABS.has(n.id)))
   : NAVIGATION;
 const ALL_TAB_IDS = VISIBLE_NAVIGATION.map((n) => n.id);
 
@@ -80,6 +81,7 @@ export default function UsersRolesPage() {
   const [editingUser, setEditingUser] = useState(null);
   const [userToDelete, setUserToDelete] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [statusUserId, setStatusUserId] = useState(null);
 
   const [formData, setFormData] = useState({
     name: '',
@@ -234,6 +236,7 @@ export default function UsersRolesPage() {
 
   const toggleStatus = async (u) => {
     const newStatus = u.status === 'active' ? 'suspended' : 'active';
+    setStatusUserId(u.id);
     setSaving(true);
     try {
       if (isInventoryOnly && !isDemoMode) {
@@ -246,6 +249,7 @@ export default function UsersRolesPage() {
       toast.error(error.message);
     } finally {
       setSaving(false);
+      setStatusUserId(null);
     }
   };
 
@@ -435,14 +439,16 @@ export default function UsersRolesPage() {
                       ) : isInvited ? (
                         <span className="badge badge-neutral">📧 Invited</span>
                       ) : (
-                        <button
+                        <LoadingButton
                           className={`badge ${u.status === 'active' ? 'badge-success' : 'badge-danger'}`}
                           style={{ cursor: 'pointer', border: 'none' }}
                           onClick={() => toggleStatus(u)}
                           disabled={saving}
+                          loading={saving && statusUserId === u.id}
+                          loadingText="Updating…"
                         >
                           {u.status === 'active' ? '● Active' : '✕ Suspended'}
-                        </button>
+                        </LoadingButton>
                       )}
                     </td>
                     <td style={{ textAlign: 'right' }}>
@@ -470,7 +476,7 @@ export default function UsersRolesPage() {
 
       {/* Add / Edit User Modal */}
       {isModalOpen && (
-        <div className="modal-backdrop" onClick={() => setIsModalOpen(false)}>
+        <div className="modal-backdrop" onClick={() => { if (!saving) setIsModalOpen(false); }}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '560px', maxHeight: '85vh', overflow: 'auto' }}>
             <h3 style={{ fontSize: 'var(--font-xl)', fontWeight: '700', marginBottom: 'var(--space-3)' }}>
               {editingUser ? 'Edit User Profile' : 'Add System User'}
@@ -512,8 +518,8 @@ export default function UsersRolesPage() {
               </div>
 
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 'var(--space-2)', marginTop: 'var(--space-2)' }}>
-                <button type="button" className="btn btn-secondary" onClick={() => setIsModalOpen(false)}>Cancel</button>
-                <button type="submit" className="btn btn-primary" disabled={saving}>{editingUser ? 'Save Changes' : 'Create User'}</button>
+                <button type="button" className="btn btn-secondary" disabled={saving} onClick={() => setIsModalOpen(false)}>Cancel</button>
+                <LoadingButton type="submit" className="btn btn-primary" loading={saving} loadingText={editingUser ? 'Saving changes…' : 'Creating user…'}>{editingUser ? 'Save Changes' : 'Create User'}</LoadingButton>
               </div>
             </form>
           </div>

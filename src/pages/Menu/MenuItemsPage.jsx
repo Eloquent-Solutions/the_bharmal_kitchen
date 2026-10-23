@@ -442,6 +442,7 @@ export default function MenuItemsPage() {
                     onChange={(e) => setFormData({ ...formData, station: e.target.value })}
                   >
                     <option value="Tandoor">Tandoor Section</option>
+                    <option value="Chinese / Wok">Chinese / Wok</option>
                     <option value="Curry / Biryani">Curry / Biryani Handi</option>
                     <option value="Desserts & Beverages">Desserts & Beverages</option>
                   </select>

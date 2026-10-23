@@ -178,6 +178,7 @@ export const NAVIGATION = [
     permissions: [PERMISSIONS.MANAGE_SETTINGS],
     children: [
       { id: 'settings-restaurant', label: 'Restaurant', path: '/settings/restaurant' },
+      { id: 'settings-billing', label: 'Billing & Receipts', path: '/settings/billing' },
       { id: 'settings-branches', label: 'Branches', path: '/settings/branches' },
       { id: 'settings-pos', label: 'POS Settings', path: '/settings/pos' },
       { id: 'settings-tax', label: 'Tax', path: '/settings/tax' },

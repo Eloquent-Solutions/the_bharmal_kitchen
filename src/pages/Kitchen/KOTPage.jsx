@@ -16,11 +16,16 @@ import {
 } from 'lucide-react';
 import { formatTime } from '../../utils/formatters';
 import { getKots, updateKotStatus, logAuditEvent } from '../../services/dataService';
+import { isDemoMode } from '../../firebase/config';
+import { updateKotStatusCloud } from '../../services/kitchenCloud';
+import { printKitchenTicket } from '../../utils/kitchenTicket';
 import toast from 'react-hot-toast';
+import LoadingButton from '../../components/LoadingButton';
 
 export default function KOTPage() {
   const [kots, setKots] = useState([]);
   const [search, setSearch] = useState('');
+  const [busyKotId, setBusyKotId] = useState(null);
 
   const loadKots = () => {
     setKots(getKots());
@@ -35,19 +40,33 @@ export default function KOTPage() {
     };
   }, []);
 
-  const handleReprintKOT = (id) => {
+  const handleReprintKOT = (kot) => {
+    try {
+      printKitchenTicket(kot);
+    } catch (error) {
+      toast.error(error.message);
+      return;
+    }
     logAuditEvent({
       action: 'KOT Reprinted',
       user: 'Kitchen Staff',
-      details: `Reprinting KOT #${id} slip to target station printer`,
+      details: `Opened browser print dialog for KOT #${kot.id}`,
       ip: 'KDS Terminal',
     });
-    toast.success(`Reprinting KOT #${id} slip to target station printer...`);
   };
 
-  const handleMarkComplete = (id) => {
-    updateKotStatus(id, 'completed');
-    toast.success(`KOT #${id} marked as completed`);
+  const handleMarkComplete = async (id) => {
+    if (busyKotId) return;
+    setBusyKotId(id);
+    try {
+      if (isDemoMode) updateKotStatus(id, 'completed');
+      else await updateKotStatusCloud(id, 'completed');
+      toast.success(`KOT #${id} marked as completed`);
+    } catch (error) {
+      toast.error(error.message);
+    } finally {
+      setBusyKotId(null);
+    }
   };
 
   const filtered = kots.filter(
@@ -121,7 +140,7 @@ export default function KOTPage() {
                     <td style={{ fontSize: 'var(--font-xs)', maxWidth: '260px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {kot.items}
                     </td>
-                    <td style={{ fontSize: 'var(--font-xs)', color: 'var(--text-tertiary)' }}>{kot.time}</td>
+                    <td style={{ fontSize: 'var(--font-xs)', color: 'var(--text-tertiary)' }}>{kot.time || (kot.createdAt ? formatTime(kot.createdAt) : '—')}</td>
                     <td>
                       {kot.status === 'active' ? (
                         <span className="badge badge-warning">In Progress</span>
@@ -132,11 +151,11 @@ export default function KOTPage() {
                     <td style={{ textAlign: 'right' }}>
                       <div style={{ display: 'inline-flex', gap: 'var(--space-2)' }}>
                         {kot.status === 'active' && (
-                          <button className="btn btn-sm btn-success" onClick={() => handleMarkComplete(kot.id)}>
+                          <LoadingButton className="btn btn-sm btn-success" loading={busyKotId === kot.id} loadingText="Saving…" disabled={busyKotId != null} onClick={() => handleMarkComplete(kot.id)}>
                             <CheckCircle2 size={13} /> Done
-                          </button>
+                          </LoadingButton>
                         )}
-                        <button className="btn btn-sm btn-secondary" onClick={() => handleReprintKOT(kot.id)}>
+                        <button className="btn btn-sm btn-secondary" onClick={() => handleReprintKOT(kot)}>
                           <Printer size={13} /> Reprint
                         </button>
                       </div>

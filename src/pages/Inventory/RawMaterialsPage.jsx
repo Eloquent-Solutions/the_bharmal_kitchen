@@ -32,6 +32,7 @@ import toast from 'react-hot-toast';
 import { isDemoMode, isInventoryOnly } from '../../firebase/config';
 import { saveRawMaterialCloud, adjustRawMaterialStockCloud } from '../../services/inventoryCloud';
 import EmptyState from '../../components/EmptyState';
+import LoadingButton from '../../components/LoadingButton';
 
 export default function RawMaterialsPage() {
   const [materials, setMaterials] = useState([]);
@@ -55,7 +56,10 @@ export default function RawMaterialsPage() {
     supplier: '',
   });
 
-  const categories = ['All', 'Meat & Poultry', 'Grains & Pulses', 'Dairy', 'Vegetables', 'Spices'];
+  const categories = ['All', ...new Set([
+    'Meat & Poultry', 'Grains & Pulses', 'Dairy', 'Vegetables', 'Spices',
+    ...materials.map((material) => material.category).filter(Boolean),
+  ])];
 
   useEffect(() => {
     refreshData();
@@ -349,7 +353,7 @@ export default function RawMaterialsPage() {
 
       {/* Adjust Stock Modal */}
       {adjustingItem && (
-        <div className="modal-backdrop" onClick={() => setAdjustingItem(null)}>
+        <div className="modal-backdrop" onClick={() => { if (!saving) setAdjustingItem(null); }}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '420px' }}>
             <h3 style={{ fontSize: 'var(--font-lg)', fontWeight: '700', marginBottom: '8px' }}>
               Adjust Stock: {adjustingItem.name}
@@ -394,12 +398,12 @@ export default function RawMaterialsPage() {
               </div>
 
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 'var(--space-2)', marginTop: 'var(--space-2)' }}>
-                <button type="button" className="btn btn-secondary" onClick={() => setAdjustingItem(null)}>
+                <button type="button" className="btn btn-secondary" disabled={saving} onClick={() => setAdjustingItem(null)}>
                   Cancel
                 </button>
-                <button type="submit" className="btn btn-primary" disabled={saving}>
+                <LoadingButton type="submit" className="btn btn-primary" loading={saving} loadingText="Saving stock movement…">
                   Save Stock Movement
-                </button>
+                </LoadingButton>
               </div>
             </form>
           </div>
@@ -408,13 +412,13 @@ export default function RawMaterialsPage() {
 
       {/* Add / Edit Material Modal */}
       {isAddModalOpen && (
-        <div className="modal-backdrop" onClick={() => setIsAddModalOpen(false)}>
+        <div className="modal-backdrop" onClick={() => { if (!saving) setIsAddModalOpen(false); }}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '480px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-3)' }}>
               <h3 style={{ fontSize: 'var(--font-xl)', fontWeight: '700' }}>
                 {editingMat ? 'Edit Raw Material' : 'Add Raw Material'}
               </h3>
-              <button className="btn-icon" onClick={() => setIsAddModalOpen(false)}>✕</button>
+              <button className="btn-icon" disabled={saving} onClick={() => setIsAddModalOpen(false)}>✕</button>
             </div>
 
             <form onSubmit={handleSaveMaterial} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
@@ -514,12 +518,12 @@ export default function RawMaterialsPage() {
               </div>
 
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 'var(--space-2)', marginTop: 'var(--space-3)' }}>
-                <button type="button" className="btn btn-secondary" onClick={() => setIsAddModalOpen(false)}>
+                <button type="button" className="btn btn-secondary" disabled={saving} onClick={() => setIsAddModalOpen(false)}>
                   Cancel
                 </button>
-                <button type="submit" className="btn btn-primary" disabled={saving}>
+                <LoadingButton type="submit" className="btn btn-primary" loading={saving} loadingText={editingMat ? 'Saving changes…' : 'Creating material…'}>
                   {editingMat ? 'Save Changes' : 'Create Material'}
-                </button>
+                </LoadingButton>
               </div>
             </form>
           </div>

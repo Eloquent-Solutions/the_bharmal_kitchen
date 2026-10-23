@@ -18,6 +18,9 @@ export const isDemoMode = dataMode === 'demo';
 export const isStaffOnly = import.meta.env.VITE_STAFF_ONLY === 'true';
 export const isInventoryOnly = import.meta.env.VITE_INVENTORY_ONLY === 'true';
 export const isBillingEnabled = import.meta.env.VITE_BILLING_ENABLED === 'true';
+// Opt-in release flags for order and kitchen operations.
+export const isOperationsEnabled = import.meta.env.VITE_OPERATIONS_ENABLED === 'true';
+export const isCustomerTakeawayEnabled = isOperationsEnabled && import.meta.env.VITE_CUSTOMER_TAKEAWAY_ENABLED === 'true';
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,

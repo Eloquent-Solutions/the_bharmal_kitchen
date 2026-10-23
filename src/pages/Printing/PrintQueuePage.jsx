@@ -17,7 +17,6 @@ import {
 } from 'lucide-react';
 import {
   getPrintQueue,
-  updatePrintJob,
   clearPrintQueue,
   logAuditEvent,
 } from '../../services/dataService';
@@ -39,22 +38,8 @@ export default function PrintQueuePage() {
     };
   }, []);
 
-  const handleRetry = (id) => {
-    const job = jobs.find((j) => j.id === id);
-    if (!job) return;
-    updatePrintJob(id, {
-      status: 'completed',
-      attempts: (job.attempts || 1) + 1,
-      error: null,
-      time: 'Just now',
-    });
-    logAuditEvent({
-      action: 'Print Job Retried',
-      user: 'Cashier / Operator',
-      details: `Dispatched print retry for job #${id} to ${job.printer}`,
-      ip: 'POS Terminal',
-    });
-    toast.success(`Job #${id} re-dispatched to printer!`);
+  const handleRetry = () => {
+    toast.error('Automatic printer retry is unavailable until a local print bridge is connected. Reprint from the bill or KOT using your browser.');
   };
 
   const handleClearQueue = () => {

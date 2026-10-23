@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { after, before, beforeEach, test } from 'node:test';
 import { strict as assert } from 'node:assert';
 import { initializeTestEnvironment, assertFails, assertSucceeds } from '@firebase/rules-unit-testing';
-import { collection, doc, getDoc, getDocs, setDoc, updateDoc } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs, query, setDoc, updateDoc, where } from 'firebase/firestore';
 
 const [host = '127.0.0.1', port = '8080'] = (process.env.FIRESTORE_EMULATOR_HOST || '').split(':');
 let environment;
@@ -21,6 +21,7 @@ beforeEach(async () => {
     const db = context.firestore();
     for (const [uid, role] of [
       ['owner', 'Owner'],
+      ['manager', 'Manager'],
       ['inventory', 'Inventory Manager'],
       ['cashier', 'Cashier'],
       ['customer', 'Customer'],
@@ -87,4 +88,35 @@ test('staff permissions differ by role', async () => {
   await assertSucceeds(setDoc(doc(cashier, 'orders', 'order-2'), { total: 10 }));
   await assertFails(getDoc(doc(cashier, 'raw_materials', 'rice')));
   await assertFails(updateDoc(doc(cashier, 'users', 'owner'), { role: 'Cashier' }));
+});
+
+test('only the owner can change live restaurant billing settings', async () => {
+  const owner = as('owner');
+  const manager = as('manager');
+  await assertSucceeds(setDoc(doc(owner, 'settings', 'restaurant'), { cgstRate: 0, sgstRate: 0 }));
+  await assertSucceeds(getDoc(doc(manager, 'settings', 'restaurant')));
+  await assertFails(updateDoc(doc(manager, 'settings', 'restaurant'), { cgstRate: 10 }));
+  await assertSucceeds(setDoc(doc(manager, 'settings', 'pos'), { requireTableNumberForDineIn: true }));
+});
+
+test('customer pickup requests cannot create bills or claim payment', async () => {
+  const customer = as('customer');
+  const manager = as('manager');
+  const request = {
+    id: 'REQ-test', customerUid: 'customer', customer: 'Guest', phone: '9876543210',
+    items: [{ dishId: 'dish-1', qty: 1 }], notes: '', orderType: 'takeaway',
+    paymentMethod: 'cash', paymentStatus: 'pending', status: 'pending', createdAt: '2026-10-23T00:00:00Z',
+  };
+  await assertFails(getDocs(collection(customer, 'takeaway_requests')));
+  await assertFails(setDoc(doc(customer, 'takeaway_requests', 'REQ-other'), { ...request, customerUid: 'owner' }));
+  await assertFails(setDoc(doc(customer, 'takeaway_requests', 'REQ-test'), { ...request, paymentStatus: 'paid' }));
+  await assertFails(setDoc(doc(customer, 'takeaway_requests', 'REQ-test'), { ...request, total: 1 }));
+  await assertSucceeds(setDoc(doc(customer, 'takeaway_requests', 'REQ-test'), request));
+  await assertSucceeds(getDoc(doc(customer, 'takeaway_requests', 'REQ-test')));
+  const ownRequests = await assertSucceeds(getDocs(query(collection(customer, 'takeaway_requests'), where('customerUid', '==', 'customer'))));
+  assert.equal(ownRequests.size, 1);
+  await assertFails(updateDoc(doc(customer, 'takeaway_requests', 'REQ-test'), { status: 'accepted' }));
+  await assertFails(setDoc(doc(customer, 'orders', 'forged'), { customerUid: 'customer', paymentStatus: 'paid' }));
+  await assertSucceeds(updateDoc(doc(manager, 'takeaway_requests', 'REQ-test'), { status: 'accepted' }));
+  await assertSucceeds(getDocs(collection(manager, 'takeaway_requests')));
 });

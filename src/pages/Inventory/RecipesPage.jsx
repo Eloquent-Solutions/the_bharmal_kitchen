@@ -34,6 +34,18 @@ import {
 import { formatCurrency, formatRecordId } from '../../utils/formatters';
 import toast from 'react-hot-toast';
 
+const ingredientCost = (ingredient, rawMaterials) => {
+  const material = rawMaterials.find((item) => item.id === ingredient.id);
+  return material
+    ? (Number(ingredient.qty) || 0) * (Number(material.unitCost) || 0)
+    : Number(ingredient.cost) || 0;
+};
+
+const isIngredientUnpriced = (ingredient, rawMaterials) => {
+  const material = rawMaterials.find((item) => item.id === ingredient.id);
+  return material && !(Number(material.unitCost) > 0);
+};
+
 export default function RecipesPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [recipes, setRecipes] = useState([]);
@@ -171,7 +183,7 @@ export default function RecipesPage() {
       id: mat.id,
       name: mat.name,
       unit: mat.unit,
-      cost: Math.round(qtyNum * mat.unitCost),
+      cost: qtyNum * (Number(mat.unitCost) || 0),
     };
     setFormData({ ...formData, ingredients: updated });
   };
@@ -185,7 +197,7 @@ export default function RecipesPage() {
     updated[index] = {
       ...updated[index],
       qty: qtyVal,
-      cost: Math.round(numQty * unitCost),
+      cost: numQty * unitCost,
     };
     setFormData({ ...formData, ingredients: updated });
   };
@@ -239,7 +251,7 @@ export default function RecipesPage() {
       instructions: formData.instructions,
       ingredients: formData.ingredients.map((ing) => ({
         ...ing,
-        cost: Number(ing.cost) || 0,
+        cost: ingredientCost(ing, rawMaterials),
       })),
     };
 
@@ -303,11 +315,11 @@ export default function RecipesPage() {
         {filtered.map((recipe) => {
           const portionInfo = calculateDishPortionsAvailable(recipe.dishId, recipe.dishName);
           const batchCost = (recipe.ingredients || []).reduce(
-            (sum, ing) => sum + (Number(ing.cost) || 0),
-            0
+            (sum, ing) => sum + ingredientCost(ing, rawMaterials), 0
           );
           const calculatedCost = batchCost / (Number(recipe.yieldServings) || 1);
           const foodCostPercent = recipe.sellingPrice > 0 ? Math.round((calculatedCost / recipe.sellingPrice) * 100) : 0;
+          const unpricedIngredients = (recipe.ingredients || []).filter((ing) => isIngredientUnpriced(ing, rawMaterials));
 
           return (
             <div
@@ -368,16 +380,21 @@ export default function RecipesPage() {
                     <div style={{ fontWeight: '700', fontSize: 'var(--font-sm)' }}>{formatCurrency(recipe.sellingPrice)}</div>
                   </div>
                   <div>
-                    <div style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>Portion Cost</div>
+                    <div style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>{unpricedIngredients.length ? 'Known Cost / Portion' : 'Portion Cost'}</div>
                     <div style={{ fontWeight: '700', fontSize: 'var(--font-sm)', color: 'var(--color-warning)' }}>{formatCurrency(calculatedCost)}</div>
                   </div>
                   <div>
-                    <div style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>Food Cost %</div>
-                    <div style={{ fontWeight: '700', fontSize: 'var(--font-sm)', color: foodCostPercent > 35 ? 'var(--color-danger)' : 'var(--color-success)' }}>
+                    <div style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>{unpricedIngredients.length ? 'Known Food Cost %' : 'Food Cost %'}</div>
+                    <div style={{ fontWeight: '700', fontSize: 'var(--font-sm)', color: unpricedIngredients.length ? 'var(--color-warning)' : foodCostPercent > 35 ? 'var(--color-danger)' : 'var(--color-success)' }}>
                       {foodCostPercent}%
                     </div>
                   </div>
                 </div>
+                {unpricedIngredients.length > 0 && (
+                  <div style={{ fontSize: '11px', color: 'var(--color-warning)', marginBottom: 'var(--space-3)' }}>
+                    Partial estimate: {unpricedIngredients.length} ingredient {unpricedIngredients.length === 1 ? 'price is' : 'prices are'} missing.
+                  </div>
+                )}
 
                 {/* Ingredients snippet from Raw Materials */}
                 <div style={{ fontSize: 'var(--font-xs)', color: 'var(--text-secondary)' }}>
@@ -387,7 +404,7 @@ export default function RecipesPage() {
                   {(recipe.ingredients || []).slice(0, 4).map((ing, i) => (
                     <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 0', borderBottom: '1px dashed rgba(255, 255, 255, 0.05)' }}>
                       <span>{ing.name} ({ing.qty} {ing.unit})</span>
-                      <span style={{ color: 'var(--text-tertiary)', fontWeight: '600' }}>{formatCurrency(ing.cost)}</span>
+                      <span style={{ color: 'var(--text-tertiary)', fontWeight: '600' }}>{isIngredientUnpriced(ing, rawMaterials) ? 'Price missing' : formatCurrency(ingredientCost(ing, rawMaterials))}</span>
                     </div>
                   ))}
                   {(recipe.ingredients || []).length > 4 && (
@@ -503,8 +520,8 @@ export default function RecipesPage() {
                       {/* Quantity Input */}
                       <input
                         type="number"
-                        step="0.01"
-                        min="0.01"
+                        step="0.001"
+                        min="0.001"
                         placeholder="Qty"
                         className="input"
                         value={ing.qty}
@@ -543,7 +560,7 @@ export default function RecipesPage() {
                           color: 'var(--color-primary)',
                         }}
                       >
-                        ₹{ing.cost || 0}
+                        {isIngredientUnpriced(ing, rawMaterials) ? 'Price missing' : formatCurrency(ingredientCost(ing, rawMaterials))}
                       </div>
 
                       {/* Delete row */}
@@ -630,7 +647,7 @@ export default function RecipesPage() {
               {(selectedRecipe.ingredients || []).map((ing, i) => (
                 <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px dashed var(--border-color)', fontSize: '13px' }}>
                   <span>{ing.name} ({ing.qty} {ing.unit})</span>
-                  <span style={{ fontWeight: '700' }}>{formatCurrency(ing.cost)}</span>
+                  <span style={{ fontWeight: '700' }}>{isIngredientUnpriced(ing, rawMaterials) ? 'Price missing' : formatCurrency(ingredientCost(ing, rawMaterials))}</span>
                 </div>
               ))}
             </div>

@@ -33,14 +33,21 @@ import { playSwiggyZomatoTone } from '../../services/notificationService';
 import { startOrderListener, stopOrderListener } from '../../services/realtimeOrderService';
 import { formatCurrency, formatTime } from '../../utils/formatters';
 import toast from 'react-hot-toast';
+import { isDemoMode, isInventoryOnly, isOperationsEnabled, isCustomerTakeawayEnabled } from '../../firebase/config';
+import { advanceOrderCloud } from '../../services/kitchenCloud';
+import TakeawayRequestsPanel from './TakeawayRequestsPanel';
+import LoadingButton from '../../components/LoadingButton';
+import EmptyState from '../../components/EmptyState';
 
 export default function ActiveOrdersPage() {
+  const cloudOperations = !isDemoMode && isInventoryOnly && isOperationsEnabled;
   const [orders, setOrders] = useState([]);
   const [menuItems, setMenuItems] = useState([]);
   const [tablesList, setTablesList] = useState([]);
   const [activeTab, setActiveTab] = useState('all');
   const [search, setSearch] = useState('');
   const [selectedOrder, setSelectedOrder] = useState(null);
+  const [busyOrderId, setBusyOrderId] = useState(null);
   const [assigningOrder, setAssigningOrder] = useState(null);
   const [assignmentType, setAssignmentType] = useState('delivery');
   const [assigneeName, setAssigneeName] = useState('');
@@ -61,9 +68,7 @@ export default function ActiveOrdersPage() {
     refreshData();
     startOrderListener(
       (realtimeOrders) => {
-        if (realtimeOrders && realtimeOrders.length > 0) {
-          setOrders(realtimeOrders);
-        }
+        setOrders(realtimeOrders || []);
       },
       { viewRole: 'pos', soundEnabled: false }
     );
@@ -97,7 +102,8 @@ export default function ActiveOrdersPage() {
     setTablesList(getTables());
   };
 
-  const filteredOrders = orders.filter((o) => {
+  const activeOrders = cloudOperations ? orders.filter((order) => !['completed', 'cancelled'].includes(order.status)) : orders;
+  const filteredOrders = activeOrders.filter((o) => {
     const matchesTab = activeTab === 'all' || o.orderType === activeTab || o.status === activeTab;
     const matchesSearch =
       o.id.toLowerCase().includes(search.toLowerCase()) ||
@@ -108,12 +114,22 @@ export default function ActiveOrdersPage() {
     return matchesTab && matchesSearch;
   });
 
-  const handleStatusUpdate = (orderId, newStatus) => {
-    const updated = updateOrderStatus(orderId, newStatus);
-    setOrders(updated);
-    toast.success(`Order #${orderId} marked as ${newStatus.toUpperCase()}`);
-    if (selectedOrder && selectedOrder.id === orderId) {
-      setSelectedOrder((prev) => ({ ...prev, status: newStatus }));
+  const handleStatusUpdate = async (orderId, newStatus) => {
+    if (busyOrderId) return;
+    setBusyOrderId(orderId);
+    try {
+      if (!isDemoMode && isInventoryOnly && isOperationsEnabled) {
+        await advanceOrderCloud(orderId, newStatus);
+        setOrders((prev) => prev.map((order) => order.id === orderId ? { ...order, status: newStatus } : order));
+      } else {
+        setOrders(updateOrderStatus(orderId, newStatus));
+      }
+      toast.success(`Order #${orderId} marked as ${newStatus.toUpperCase()}`);
+      if (selectedOrder?.id === orderId) setSelectedOrder((prev) => ({ ...prev, status: newStatus }));
+    } catch (error) {
+      toast.error(error.message);
+    } finally {
+      setBusyOrderId(null);
     }
   };
 
@@ -201,14 +217,14 @@ export default function ActiveOrdersPage() {
     }
   };
 
-  const getStatusBadge = (status) => {
+  const getStatusBadge = (status, orderType) => {
     switch (status) {
       case 'received':
         return <span className="badge badge-info">Received</span>;
       case 'cooking':
         return <span className="badge badge-warning">In Kitchen</span>;
       case 'ready':
-        return <span className="badge badge-success">Ready to Serve</span>;
+        return <span className="badge badge-success">{orderType === 'takeaway' ? 'Ready for pickup' : 'Ready to serve'}</span>;
       case 'completed':
         return <span className="badge badge-secondary">Completed</span>;
       default:
@@ -223,15 +239,17 @@ export default function ActiveOrdersPage() {
         <div>
           <h2 style={{ fontSize: 'var(--font-2xl)', fontWeight: '700' }}>Active Live Orders & Billing Dispatch</h2>
           <p style={{ color: 'var(--text-secondary)', fontSize: 'var(--font-sm)' }}>
-            Real-time feed. Cashier can add, edit, cancel orders, and assign to delivery partners or captains.
+            Confirm pickup requests and follow each order from kitchen preparation to collection.
           </p>
         </div>
         <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
           <span className="badge badge-primary" style={{ padding: '8px 14px', fontSize: '13px' }}>
-            ● {orders.length} Active Orders
+            ● {activeOrders.length} Active Orders
           </span>
         </div>
       </div>
+
+      {isCustomerTakeawayEnabled && !isDemoMode && <TakeawayRequestsPanel />}
 
       {/* Filter Bar */}
       <div className="card" style={{ padding: 'var(--space-4)', display: 'flex', flexWrap: 'wrap', gap: 'var(--space-3)', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -240,7 +258,7 @@ export default function ActiveOrdersPage() {
             { id: 'all', label: 'All Orders' },
             { id: 'dine_in', label: 'Dine-In' },
             { id: 'takeaway', label: 'Takeaway' },
-            { id: 'delivery', label: 'Delivery' },
+            ...(!cloudOperations ? [{ id: 'delivery', label: 'Delivery' }] : []),
             { id: 'cooking', label: 'Cooking Now' },
             { id: 'ready', label: 'Ready' },
           ].map((tab) => (
@@ -269,6 +287,7 @@ export default function ActiveOrdersPage() {
 
       {/* Orders Grid */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: 'var(--space-4)' }}>
+        {filteredOrders.length === 0 && <EmptyState icon={ShoppingBag} title="No active orders" description="Phone takeaway bills and confirmed pickup requests will appear here." />}
         {filteredOrders.map((order) => (
           <div
             key={order.id}
@@ -294,7 +313,7 @@ export default function ActiveOrdersPage() {
                     {order.table ? `Table: ${order.table}` : order.orderType?.toUpperCase()} • {order.customer}
                   </div>
                 </div>
-                {getStatusBadge(order.status)}
+                {getStatusBadge(order.status, order.orderType)}
               </div>
 
               {/* Assignment Badges (Delivery Partner or Captain) */}
@@ -364,6 +383,8 @@ export default function ActiveOrdersPage() {
                   </div>
                 ))}
               </div>
+              {order.notes && <p style={{ color: 'var(--color-warning)', fontSize: 'var(--font-xs)' }}>Kitchen note: {order.notes}</p>}
+              {order.orderType === 'takeaway' && order.phone && <p style={{ color: 'var(--text-secondary)', fontSize: 'var(--font-xs)' }}>Pickup phone: {order.phone}</p>}
 
               {/* Time & Total */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 'var(--font-xs)', color: 'var(--text-tertiary)', marginTop: 'var(--space-2)' }}>
@@ -379,61 +400,70 @@ export default function ActiveOrdersPage() {
             {/* Quick Actions Footer for Cashier / Billing */}
             <div style={{ display: 'flex', gap: '6px', marginTop: 'var(--space-3)', paddingTop: 'var(--space-2)', borderTop: '1px solid var(--border-color)', flexWrap: 'wrap' }}>
               {order.status === 'received' && (
-                <button
+                <LoadingButton
                   className="btn btn-warning btn-sm"
                   style={{ flex: 1 }}
+                  loading={busyOrderId === order.id}
+                  loadingText="Updating…"
+                  disabled={busyOrderId != null}
                   onClick={() => handleStatusUpdate(order.id, 'cooking')}
                 >
                   <ChefHat size={14} /> Send Kitchen
-                </button>
+                </LoadingButton>
               )}
               {order.status === 'cooking' && (
-                <button
+                <LoadingButton
                   className="btn btn-success btn-sm"
                   style={{ flex: 1 }}
+                  loading={busyOrderId === order.id}
+                  loadingText="Updating…"
+                  disabled={busyOrderId != null}
                   onClick={() => handleStatusUpdate(order.id, 'ready')}
                 >
                   <CheckCircle2 size={14} /> Mark Ready
-                </button>
+                </LoadingButton>
               )}
               {order.status === 'ready' && (
-                <button
+                <LoadingButton
                   className="btn btn-primary btn-sm"
                   style={{ flex: 1 }}
+                  loading={busyOrderId === order.id}
+                  loadingText="Updating…"
+                  disabled={busyOrderId != null}
                   onClick={() => handleStatusUpdate(order.id, 'completed')}
                 >
-                  Settle Bill
-                </button>
+                  {order.orderType === 'takeaway' ? 'Mark collected' : 'Complete order'}
+                </LoadingButton>
               )}
 
               {/* Assign to Rider or Captain */}
-              <button
+              {!cloudOperations && <button
                 className="btn btn-secondary btn-sm"
                 onClick={() => handleOpenAssignModal(order)}
                 title="Assign Delivery Partner or Captain"
                 disabled={order.status === 'completed'}
               >
                 <UserCheck size={14} /> Assign
-              </button>
+              </button>}
 
               {/* Edit Order */}
-              <button
+              {!cloudOperations && <button
                 className="btn-icon"
                 onClick={() => handleOpenEdit(order)}
                 title="Edit Order"
               >
                 <Edit2 size={14} />
-              </button>
+              </button>}
 
               {/* Cancel / Delete Order */}
-              <button
+              {!cloudOperations && <button
                 className="btn-icon"
                 onClick={() => handleDeleteOrder(order.id)}
                 title="Cancel / Delete Order"
                 style={{ color: 'var(--color-danger)' }}
               >
                 <Trash2 size={14} />
-              </button>
+              </button>}
             </div>
           </div>
         ))}

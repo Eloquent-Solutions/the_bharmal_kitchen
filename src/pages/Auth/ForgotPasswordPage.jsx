@@ -8,6 +8,7 @@ import { Link } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import { isDemoMode } from '../../firebase/config';
 import { AlertCircle, Mail, CheckCircle, ArrowLeft } from 'lucide-react';
+import LoadingButton from '../../components/LoadingButton';
 
 export default function ForgotPasswordPage() {
   const { resetPassword } = useAuth();
@@ -103,16 +104,9 @@ export default function ForgotPasswordPage() {
           </div>
         </div>
 
-        <button type="submit" className="btn btn-primary btn-lg w-full" disabled={loading}>
-          {loading ? (
-            <>
-              <span className="spinner spinner-sm" />
-              Sending...
-            </>
-          ) : (
-            'Send Reset Link'
-          )}
-        </button>
+        <LoadingButton type="submit" className="btn btn-primary btn-lg w-full" loading={loading} loadingText="Sending reset link…">
+          Send Reset Link
+        </LoadingButton>
       </form>
 
       <div style={{ marginTop: 'var(--space-4)', textAlign: 'center' }}>

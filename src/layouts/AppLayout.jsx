@@ -8,9 +8,9 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Outlet, Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
-import { isStaffOnly, isInventoryOnly, isBillingEnabled, isDemoMode } from '../firebase/config';
+import { isStaffOnly, isInventoryOnly, isBillingEnabled, isOperationsEnabled, isCustomerTakeawayEnabled, isDemoMode } from '../firebase/config';
 import { getInventorySyncState } from '../services/dataService';
-import { BILLING_RELEASE_ROLES, BILLING_RELEASE_ROUTES, INVENTORY_HOME, INVENTORY_RELEASE_ROUTES, inventoryReleaseTabForPath } from '../constants/inventoryRelease';
+import { BILLING_RELEASE_ROLES, BILLING_RELEASE_ROUTES, INVENTORY_HOME, INVENTORY_RELEASE_ROUTES, OPERATIONS_RELEASE_ROUTES, inventoryReleaseTabForPath } from '../constants/inventoryRelease';
 import { PERMISSIONS, ROLES } from '../constants/roles';
 import Sidebar from '../components/Sidebar/Sidebar';
 import TopBar from '../components/TopBar/TopBar';
@@ -62,7 +62,7 @@ export default function AppLayout() {
 
   // Redirect customers to customer order page
   if (isCustomer) {
-    return <Navigate to={isStaffOnly ? '/access-pending' : '/order'} replace />;
+    return <Navigate to={isStaffOnly && !isCustomerTakeawayEnabled ? '/access-pending' : '/order'} replace />;
   }
 
   if (isInventoryOnly && !isDemoMode && !inventorySync.ready) {
@@ -85,15 +85,22 @@ export default function AppLayout() {
   }
 
   if (isInventoryOnly) {
-    if (!INVENTORY_RELEASE_ROUTES.has(location.pathname) && !(isBillingEnabled && BILLING_RELEASE_ROUTES.has(location.pathname))) {
+    const operationsPath = isOperationsEnabled && OPERATIONS_RELEASE_ROUTES.has(location.pathname);
+    if (!INVENTORY_RELEASE_ROUTES.has(location.pathname) && !(isBillingEnabled && BILLING_RELEASE_ROUTES.has(location.pathname)) && !operationsPath) {
       return <Navigate to={INVENTORY_HOME} replace />;
     }
-    const billingPath = isBillingEnabled && BILLING_RELEASE_ROUTES.has(location.pathname);
+    const billingPath = isBillingEnabled && BILLING_RELEASE_ROUTES.has(location.pathname) && !operationsPath;
     const tab = billingPath && (location.pathname === '/pos' || location.pathname.startsWith('/orders'))
       ? (location.pathname === '/pos' ? 'pos' : location.pathname === '/orders' ? 'orders' : 'orders-history')
+      : operationsPath && location.pathname.startsWith('/kitchen')
+        ? (location.pathname === '/kitchen' ? 'kitchen' : inventoryReleaseTabForPath(location.pathname))
       : inventoryReleaseTabForPath(location.pathname);
-    const requiredPermission = billingPath
-      ? location.pathname.startsWith('/menu')
+    const requiredPermission = operationsPath
+      ? location.pathname.startsWith('/kitchen') ? PERMISSIONS.VIEW_KITCHEN : PERMISSIONS.CREATE_ORDER
+      : billingPath
+      ? location.pathname.startsWith('/settings')
+        ? PERMISSIONS.MANAGE_USERS
+        : location.pathname.startsWith('/menu')
         ? PERMISSIONS.MANAGE_MENU
         : location.pathname === '/inventory/recipes'
           ? PERMISSIONS.MANAGE_RECIPE
@@ -108,6 +115,7 @@ export default function AppLayout() {
     const authorized = hasPermission(requiredPermission)
       && isTabAllowed(tab)
       && (!billingPath || BILLING_RELEASE_ROLES.has(role))
+      && (!operationsPath || [ROLES.OWNER, ROLES.ADMIN, ROLES.MANAGER, ROLES.CHEF, ROLES.KITCHEN_STAFF].includes(role))
       && (!location.pathname.startsWith('/settings') || [ROLES.OWNER, ROLES.ADMIN].includes(role));
     if (!authorized) {
       return (

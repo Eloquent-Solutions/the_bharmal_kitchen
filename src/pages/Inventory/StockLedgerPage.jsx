@@ -6,16 +6,20 @@
  */
 
 import { useState, useEffect } from 'react';
-import {
-  PackageCheck,
-  Search,
-  ArrowDownRight,
-  ArrowUpRight,
-  Calendar,
-  Filter,
-} from 'lucide-react';
-import { formatCurrency, formatDateTime, formatRecordId } from '../../utils/formatters';
+import { Search, ArrowDownRight, ArrowUpRight } from 'lucide-react';
+import { formatDate, formatDateTime, formatRecordId } from '../../utils/formatters';
 import { getStockMovements } from '../../services/dataService';
+import './StockLedgerPage.css';
+
+function openingCountDate(source) {
+  const match = /^Opening Stock \(Handwritten count (\d{2})\/(\d{2})\/(\d{4})\)$/.exec(source || '');
+  return match ? `${match[3]}-${match[2]}-${match[1]}` : null;
+}
+
+function movementIdLabel(id) {
+  const openingId = /^MOV-OPEN-\d{8}-(\d+)$/.exec(id || '');
+  return openingId ? `OPEN-${openingId[1]}` : formatRecordId(id);
+}
 
 export default function StockLedgerPage() {
   const [logs, setLogs] = useState([]);
@@ -70,13 +74,22 @@ export default function StockLedgerPage() {
       </div>
 
       {/* Table */}
-      <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+      <div className="card stock-ledger-card" style={{ padding: 0, overflow: 'hidden' }}>
         <div className="table-container">
-          <table className="table">
+          <table className="table stock-ledger-table">
+            <colgroup>
+              <col style={{ width: '10%' }} />
+              <col style={{ width: '13%' }} />
+              <col style={{ width: '14%' }} />
+              <col style={{ width: '14%' }} />
+              <col style={{ width: '10%' }} />
+              <col style={{ width: '24%' }} />
+              <col style={{ width: '15%' }} />
+            </colgroup>
             <thead>
               <tr>
                 <th>Log ID</th>
-                <th>Timestamp</th>
+                <th>Date / Time</th>
                 <th>Raw Material</th>
                 <th>Movement Type</th>
                 <th>Quantity</th>
@@ -94,9 +107,9 @@ export default function StockLedgerPage() {
               ) : (
                 filtered.map((l) => (
                   <tr key={l.id}>
-                    <td title={l.id} style={{ fontWeight: '700', color: 'var(--text-tertiary)', whiteSpace: 'nowrap' }}>{formatRecordId(l.id)}</td>
+                    <td title={l.id} className="stock-ledger-id" style={{ fontWeight: '700', color: 'var(--text-tertiary)' }}>{movementIdLabel(l.id)}</td>
                     <td style={{ fontSize: 'var(--font-xs)', color: 'var(--text-secondary)' }}>
-                      {formatDateTime(l.date)}
+                      {openingCountDate(l.source) ? formatDate(openingCountDate(l.source)) : formatDateTime(l.date)}
                     </td>
                     <td style={{ fontWeight: '700' }}>{l.material}</td>
                     <td>
@@ -113,7 +126,9 @@ export default function StockLedgerPage() {
                     <td style={{ fontWeight: '800', color: l.type === 'inward' ? 'var(--color-success)' : 'var(--color-warning)' }}>
                       {l.type === 'inward' ? `+${l.qty} ${l.unit}` : `-${l.qty} ${l.unit}`}
                     </td>
-                    <td style={{ fontSize: 'var(--font-xs)', color: 'var(--text-secondary)' }}>{l.source}</td>
+                    <td title={l.source} style={{ fontSize: 'var(--font-xs)', color: 'var(--text-secondary)' }}>
+                      {openingCountDate(l.source) ? 'Opening Stock · Handwritten Count' : l.source}
+                    </td>
                     <td style={{ fontSize: 'var(--font-xs)' }}>{l.user}</td>
                   </tr>
                 ))

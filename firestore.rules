@@ -24,6 +24,10 @@ service cloud.firestore {
       ]);
     }
 
+    function isActiveCustomer() {
+      return hasRole(['Customer']);
+    }
+
     // A first-time sign-in can create only its own Customer profile. Owners
     // assign staff roles through the admin UI or Firebase Console.
     match /users/{userId} {
@@ -46,9 +50,39 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    // Customers submit a pickup request only. Staff reprice and validate each
+    // dish through the POS transaction before creating a bill or kitchen ticket.
+    match /takeaway_requests/{requestId} {
+      allow get: if hasRole(['Owner', 'Admin', 'Manager']) || (isActiveCustomer() && resource.data.customerUid == request.auth.uid);
+      allow list: if hasRole(['Owner', 'Admin', 'Manager']) || (isActiveCustomer() && resource.data.customerUid == request.auth.uid);
+      allow create: if isActiveCustomer()
+        && request.resource.data.keys().hasOnly(['id', 'customerUid', 'customer', 'phone', 'items', 'notes', 'orderType', 'paymentMethod', 'paymentStatus', 'status', 'createdAt'])
+        && request.resource.data.id == requestId
+        && request.resource.data.customerUid == request.auth.uid
+        && request.resource.data.orderType == 'takeaway'
+        && request.resource.data.paymentMethod == 'cash'
+        && request.resource.data.paymentStatus == 'pending'
+        && request.resource.data.status == 'pending'
+        && request.resource.data.customer is string
+        && request.resource.data.customer.size() > 0
+        && request.resource.data.customer.size() <= 100
+        && request.resource.data.phone is string
+        && request.resource.data.phone.size() <= 20
+        && request.resource.data.notes is string
+        && request.resource.data.notes.size() <= 500
+        && request.resource.data.items is list
+        && request.resource.data.items.size() > 0
+        && request.resource.data.items.size() <= 20;
+      allow update: if hasRole(['Owner', 'Admin', 'Manager']);
+      allow delete: if isAdmin();
+    }
+
     match /{collection}/{document} {
       // Owner and Admin can manage top-level operational documents.
       allow read, write: if isAdmin();
+
+      allow read: if signedIn() && collection in ['menu_items', 'categories'];
+      allow get: if isActiveCustomer() && collection == 'orders' && resource.data.customerUid == request.auth.uid;
 
       allow read: if isStaff() && collection in [
         'menu_items', 'categories', 'combos', 'modifiers', 'promotions',
@@ -58,7 +92,9 @@ service cloud.firestore {
       allow write: if hasRole(['Manager', 'Chef']) && collection in [
         'menu_items', 'categories', 'combos', 'modifiers'
       ];
-      allow write: if hasRole(['Manager']) && collection in ['promotions', 'branches', 'settings', 'printers', 'print_routing'];
+      allow write: if hasRole(['Manager'])
+        && collection in ['promotions', 'branches', 'settings', 'printers', 'print_routing']
+        && (collection != 'settings' || document != 'restaurant');
       allow write: if hasRole(['Manager', 'Cashier', 'Chef', 'Kitchen Staff', 'Waiter', 'Captain'])
         && collection in ['orders', 'kots', 'tables'];
       allow write: if hasRole(['Manager', 'Cashier', 'Chef']) && collection == 'print_queue';
@@ -71,6 +107,7 @@ service cloud.firestore {
 
       allow read: if hasRole(['Manager', 'Inventory Manager', 'Accountant'])
         && collection in ['suppliers', 'supply_categories', 'kitchen_stations', 'purchase_bills', 'purchase_orders'];
+      allow read: if hasRole(['Chef', 'Kitchen Staff']) && collection == 'kitchen_stations';
       allow write: if hasRole(['Manager', 'Inventory Manager'])
         && collection in ['suppliers', 'supply_categories', 'kitchen_stations', 'purchase_bills', 'purchase_orders'];
 

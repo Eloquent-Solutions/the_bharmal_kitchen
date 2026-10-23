@@ -20,6 +20,7 @@ import toast from 'react-hot-toast';
 import { isDemoMode, isInventoryOnly } from '../../firebase/config';
 import { reconcilePhysicalStockCloud } from '../../services/inventoryCloud';
 import EmptyState from '../../components/EmptyState';
+import LoadingButton from '../../components/LoadingButton';
 
 export default function StockCountPage() {
   const [items, setItems] = useState([]);
@@ -94,9 +95,9 @@ export default function StockCountPage() {
           <button className="btn btn-secondary" onClick={loadItems}>
             <RotateCcw size={16} /> Reload Current Stock
           </button>
-          <button className="btn btn-primary" onClick={handleReconcileAll} disabled={saving || items.length === 0}>
+          <LoadingButton className="btn btn-primary" onClick={handleReconcileAll} loading={saving} loadingText="Reconciling stock…" disabled={items.length === 0}>
             <Save size={16} /> Reconcile Stock Discrepancies
-          </button>
+          </LoadingButton>
         </div>
       </div>
 

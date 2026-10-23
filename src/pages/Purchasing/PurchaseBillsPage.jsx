@@ -6,8 +6,9 @@
  * Automatically inwards purchased Raw Materials and Utensils directly into stock inventory!
  */
 
-import { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
+import LoadingButton from '../../components/LoadingButton';
 import {
   Receipt,
   Plus,
@@ -29,6 +30,8 @@ import {
   getSuppliers,
   getRawMaterials,
   getUtensils,
+  getPurchaseOrders,
+  savePurchaseOrder,
 } from '../../services/dataService';
 import { formatCurrency, formatDate, formatRecordId } from '../../utils/formatters';
 import toast from 'react-hot-toast';
@@ -38,7 +41,11 @@ import EmptyState from '../../components/EmptyState';
 import './PurchaseBillsPage.css';
 
 export default function PurchaseBillsPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const requestedOrderId = searchParams.get('purchaseOrderId');
+  const openedOrderRef = useRef(null);
   const [bills, setBills] = useState([]);
+  const [purchaseOrders, setPurchaseOrders] = useState([]);
   const [suppliers, setSuppliers] = useState([]);
   const [rawMaterials, setRawMaterials] = useState([]);
   const [utensils, setUtensils] = useState([]);
@@ -56,13 +63,14 @@ export default function PurchaseBillsPage() {
     billDate: new Date().toISOString().split('T')[0],
     dueDate: '',
     paymentStatus: 'pending',
+    purchaseOrderId: '',
     gstAmount: 0,
     items: [],
   });
 
   useEffect(() => {
     refreshData();
-    const events = ['tbk_purchase_bills_updated', 'tbk_raw_materials_updated', 'tbk_utensils_updated', 'tbk_suppliers_updated'];
+    const events = ['tbk_purchase_bills_updated', 'tbk_raw_materials_updated', 'tbk_utensils_updated', 'tbk_suppliers_updated', 'tbk_purchase_orders_updated'];
     events.forEach((event) => window.addEventListener(event, refreshData));
     return () => events.forEach((event) => window.removeEventListener(event, refreshData));
   }, []);
@@ -72,11 +80,12 @@ export default function PurchaseBillsPage() {
     setSuppliers(getSuppliers());
     setRawMaterials(getRawMaterials());
     setUtensils(getUtensils());
+    setPurchaseOrders(getPurchaseOrders());
   };
 
-  const handleOpenAdd = () => {
+  const handleOpenAdd = useCallback((order = null) => {
     setEditingBill(null);
-    const defaultSup = suppliers[0]?.name || '';
+    const defaultSup = order?.supplier || suppliers[0]?.name || '';
     const defaultMat = rawMaterials.length > 0 ? rawMaterials[0] : null;
 
     setFormData({
@@ -86,8 +95,13 @@ export default function PurchaseBillsPage() {
       billDate: new Date().toISOString().split('T')[0],
       dueDate: new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0],
       paymentStatus: 'pending',
+      purchaseOrderId: order?.id || '',
       gstAmount: 0,
-      items: defaultMat
+      items: order ? order.items.filter((item) => Number(item.qty) > Number(item.receivedQty || 0)).map((item) => {
+        const qty = Number((Number(item.qty) - Number(item.receivedQty || 0)).toFixed(3));
+        return { type: item.type, itemId: item.itemId, name: item.name, unit: item.unit,
+          qty, unitCost: item.unitCost, total: Number((qty * Number(item.unitCost)).toFixed(2)) };
+      }) : defaultMat
         ? [
             {
               type: 'raw_material',
@@ -102,7 +116,18 @@ export default function PurchaseBillsPage() {
         : [],
     });
     setIsModalOpen(true);
-  };
+  }, [suppliers, rawMaterials]);
+
+  useEffect(() => {
+    if (!requestedOrderId) { openedOrderRef.current = null; return; }
+    if (openedOrderRef.current === requestedOrderId) return;
+    const order = purchaseOrders.find((entry) => entry.id === requestedOrderId);
+    if (!order) return;
+    openedOrderRef.current = requestedOrderId;
+    if (!['open', 'partial'].includes(order.status)) toast.error('This purchase order has no outstanding delivery.');
+    else handleOpenAdd(order);
+    setSearchParams({}, { replace: true });
+  }, [requestedOrderId, purchaseOrders, handleOpenAdd, setSearchParams]);
 
   const handleOpenEdit = (bill) => {
     setEditingBill(bill);
@@ -112,6 +137,7 @@ export default function PurchaseBillsPage() {
       billDate: bill.billDate || '',
       dueDate: bill.dueDate || '',
       paymentStatus: bill.paymentStatus || 'pending',
+      purchaseOrderId: bill.purchaseOrderId || '',
       gstAmount: Number(bill.gstAmount || 0),
       items: bill.items ? [...bill.items] : [],
     });
@@ -254,6 +280,25 @@ export default function PurchaseBillsPage() {
       toast.error('Each bill line needs an existing item, a valid rate, and a positive quantity (whole pieces for utensils).');
       return;
     }
+    const linkedOrder = formData.purchaseOrderId && purchaseOrders.find((order) => order.id === formData.purchaseOrderId);
+    if (!editingBill && formData.purchaseOrderId) {
+      if (!linkedOrder || !['open', 'partial'].includes(linkedOrder.status) || linkedOrder.supplier !== formData.supplier) {
+        toast.error('The linked purchase order changed. Reload it from Purchase Orders.');
+        return;
+      }
+      const billed = new Map();
+      formData.items.forEach((item) => {
+        const key = `${item.type}:${item.itemId}`;
+        billed.set(key, Number(((billed.get(key) || 0) + Number(item.qty)).toFixed(3)));
+      });
+      if ([...billed].some(([key, qty]) => {
+        const ordered = linkedOrder.items.find((item) => `${item.type}:${item.itemId}` === key);
+        return !ordered || qty > Number(ordered.qty) - Number(ordered.receivedQty || 0) + 0.0000001;
+      })) {
+        toast.error('Invoice quantity exceeds the outstanding purchase order quantity.');
+        return;
+      }
+    }
 
     const subtotal = calculateSubtotal();
     const gst = Number(formData.gstAmount);
@@ -268,6 +313,7 @@ export default function PurchaseBillsPage() {
       id: editingBill?.id || formData.id,
       invoiceNumber: formData.invoiceNumber.trim(),
       supplier: formData.supplier,
+      purchaseOrderId: formData.purchaseOrderId || null,
       billDate: formData.billDate,
       dueDate: formData.dueDate,
       items: formData.items,
@@ -284,6 +330,13 @@ export default function PurchaseBillsPage() {
         await savePurchaseBillCloud(payload, editingBill);
       } else {
         setBills(savePurchaseBill(payload));
+        if (!editingBill && linkedOrder) {
+          const items = linkedOrder.items.map((ordered) => ({ ...ordered, receivedQty: Number((Number(ordered.receivedQty || 0)
+            + formData.items.filter((line) => line.type === ordered.type && line.itemId === ordered.itemId)
+              .reduce((sum, line) => sum + Number(line.qty), 0)).toFixed(3)) }));
+          savePurchaseOrder({ ...linkedOrder, items,
+            status: items.every((item) => item.receivedQty >= Number(item.qty) - 0.0000001) ? 'received' : 'partial' });
+        }
       }
       setIsModalOpen(false);
       refreshData();
@@ -353,7 +406,7 @@ export default function PurchaseBillsPage() {
       ? <Link className="btn btn-secondary" to={suppliers.length === 0 ? '/purchasing/suppliers' : '/inventory/materials'}>
           {suppliers.length === 0 ? 'Add Supplier' : 'Add Inventory Item'}
         </Link>
-      : <button className="btn btn-primary" onClick={handleOpenAdd}><Plus size={16} /> Record Purchase Bill</button>;
+      : <button className="btn btn-primary" onClick={() => handleOpenAdd()}><Plus size={16} /> Record Purchase Bill</button>;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-5)' }}>
@@ -365,7 +418,7 @@ export default function PurchaseBillsPage() {
             Adding supplier bills automatically increments Raw Materials and Utensils stock in real time.
           </p>
         </div>
-        <button className="btn btn-primary" onClick={handleOpenAdd} disabled={Boolean(purchaseBillUnavailableReason)} title={purchaseBillUnavailableReason}>
+        <button className="btn btn-primary" onClick={() => handleOpenAdd()} disabled={Boolean(purchaseBillUnavailableReason)} title={purchaseBillUnavailableReason}>
           <Plus size={16} /> Record Purchase Bill
         </button>
       </div>
@@ -405,6 +458,7 @@ export default function PurchaseBillsPage() {
                 <th>Voucher #</th>
                 <th>Vendor Invoice #</th>
                 <th>Supplier</th>
+                <th>PO</th>
                 <th>Purchased Items</th>
                 <th>Bill Date</th>
                 <th>Total (₹)</th>
@@ -418,6 +472,7 @@ export default function PurchaseBillsPage() {
                   <td title={b.id} style={{ fontWeight: '700', color: 'var(--text-tertiary)' }}>{formatRecordId(b.id)}</td>
                   <td style={{ fontWeight: '700', color: 'var(--color-primary)' }}>{b.invoiceNumber}</td>
                   <td style={{ fontWeight: '600' }}>{b.supplier}</td>
+                  <td>{b.purchaseOrderId ? <Link to="/purchasing/orders" title={b.purchaseOrderId}>{formatRecordId(b.purchaseOrderId)}</Link> : '—'}</td>
                   <td>
                     <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
                       {b.items?.map((itm, i) => (
@@ -444,14 +499,16 @@ export default function PurchaseBillsPage() {
                   <td style={{ textAlign: 'right' }}>
                     <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '6px' }}>
                       {b.paymentStatus !== 'paid' && (
-                        <button
+                        <LoadingButton
                           className="btn btn-secondary btn-sm"
                           style={{ fontSize: '11px', padding: '3px 8px' }}
                           onClick={() => handleMarkPaid(b)}
                           disabled={saving}
+                          loading={saving && confirmPaidBillId === b.id}
+                          loadingText="Recording payment…"
                         >
                           {confirmPaidBillId === b.id ? `Confirm ${formatCurrency(b.totalAmount)} paid` : 'Mark Paid'}
-                        </button>
+                        </LoadingButton>
                       )}
                       {confirmPaidBillId === b.id && <button className="btn btn-ghost btn-sm" onClick={() => setConfirmPaidBillId(null)} disabled={saving}>Cancel</button>}
                       {!isInventoryOnly && <button
@@ -481,16 +538,17 @@ export default function PurchaseBillsPage() {
 
       {/* Add / Edit Bill Modal with Multi-line Inward Items */}
       {isModalOpen && (
-        <div className="modal-backdrop" onClick={() => setIsModalOpen(false)}>
+        <div className="modal-backdrop" onClick={() => { if (!saving) setIsModalOpen(false); }}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '680px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-3)' }}>
               <h3 style={{ fontSize: 'var(--font-xl)', fontWeight: '700' }}>
                 {editingBill ? 'Edit Purchase Bill' : 'Record Supplier Inward Bill'}
               </h3>
-              <button className="btn-icon" onClick={() => setIsModalOpen(false)}>✕</button>
+              <button className="btn-icon" disabled={saving} onClick={() => setIsModalOpen(false)}>✕</button>
             </div>
 
             <form onSubmit={handleSaveBill} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+              {formData.purchaseOrderId && <p style={{ color: 'var(--color-primary)', margin: 0 }}>Receiving against PO {formatRecordId(formData.purchaseOrderId)}. Adjust quantities for a partial delivery; the invoice can contain only ordered items.</p>}
               <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: 'var(--space-3)' }}>
                 <div>
                   <label className="label">Supplier / Vendor</label>
@@ -498,6 +556,7 @@ export default function PurchaseBillsPage() {
                     className="input"
                     required
                     value={formData.supplier}
+                    disabled={Boolean(formData.purchaseOrderId)}
                     onChange={(e) => setFormData({ ...formData, supplier: e.target.value })}
                   >
                     <option value="">Select supplier</option>
@@ -566,6 +625,7 @@ export default function PurchaseBillsPage() {
                     className="btn btn-secondary btn-sm"
                     style={{ fontSize: '11px', padding: '3px 8px' }}
                     onClick={handleAddLineItem}
+                    disabled={Boolean(formData.purchaseOrderId)}
                   >
                     <Plus size={12} /> Add Item Row
                   </button>
@@ -578,6 +638,7 @@ export default function PurchaseBillsPage() {
                       <select
                         className="input"
                         value={item.type}
+                        disabled={Boolean(formData.purchaseOrderId)}
                         onChange={(e) => handleItemTypeChange(idx, e.target.value)}
                         style={{ fontSize: '11px', height: '32px' }}
                       >
@@ -590,6 +651,7 @@ export default function PurchaseBillsPage() {
                         <select
                           className="input"
                           value={item.itemId}
+                          disabled={Boolean(formData.purchaseOrderId)}
                           onChange={(e) => handleItemSelected(idx, e.target.value)}
                           style={{ fontSize: '12px', height: '32px' }}
                         >
@@ -601,6 +663,7 @@ export default function PurchaseBillsPage() {
                         <select
                           className="input"
                           value={item.itemId}
+                          disabled={Boolean(formData.purchaseOrderId)}
                           onChange={(e) => handleItemSelected(idx, e.target.value)}
                           style={{ fontSize: '12px', height: '32px' }}
                         >
@@ -613,8 +676,8 @@ export default function PurchaseBillsPage() {
                       {/* Qty */}
                       <input
                         type="number"
-                        step="0.01"
-                        min="0.01"
+                        step={item.type === 'utensil' ? '1' : '0.001'}
+                        min={item.type === 'utensil' ? '1' : '0.001'}
                         placeholder="Qty"
                         className="input"
                         value={item.qty}
@@ -644,6 +707,7 @@ export default function PurchaseBillsPage() {
                         type="button"
                         className="btn-icon"
                         onClick={() => handleRemoveLineItem(idx)}
+                        disabled={Boolean(formData.purchaseOrderId)}
                         style={{ color: 'var(--color-danger)' }}
                       >
                         ✕
@@ -683,12 +747,12 @@ export default function PurchaseBillsPage() {
               </div>
 
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 'var(--space-2)', marginTop: 'var(--space-2)' }}>
-                <button type="button" className="btn btn-secondary" onClick={() => setIsModalOpen(false)}>
+                <button type="button" className="btn btn-secondary" disabled={saving} onClick={() => setIsModalOpen(false)}>
                   Cancel
                 </button>
-                <button type="submit" className="btn btn-primary" disabled={saving}>
+                <LoadingButton type="submit" className="btn btn-primary" loading={saving} loadingText={editingBill ? 'Saving changes…' : 'Saving bill and stock…'}>
                   {editingBill ? 'Save Changes' : 'Save & Inward to Stock'}
-                </button>
+                </LoadingButton>
               </div>
             </form>
           </div>

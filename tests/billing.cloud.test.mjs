@@ -12,6 +12,9 @@ let vite;
 let billing;
 let inventory;
 let receipt;
+let takeaway;
+let kitchen;
+let kitchenTicket;
 
 before(async () => {
   assert.ok(process.env.FIRESTORE_EMULATOR_HOST, 'Start this test through firebase emulators:exec');
@@ -28,13 +31,16 @@ before(async () => {
   billing = await vite.ssrLoadModule('/src/services/billingCloud.js');
   inventory = await vite.ssrLoadModule('/src/services/inventoryCloud.js');
   receipt = await vite.ssrLoadModule('/src/utils/billingReceipt.js');
+  takeaway = await vite.ssrLoadModule('/src/services/takeawayCloud.js');
+  kitchen = await vite.ssrLoadModule('/src/services/kitchenCloud.js');
+  kitchenTicket = await vite.ssrLoadModule('/src/utils/kitchenTicket.js');
 });
 
 beforeEach(async () => {
   await environment.clearFirestore();
   await environment.withSecurityRulesDisabled(async (context) => {
     const database = context.firestore();
-    for (const [uid, role] of [['owner', 'Owner'], ['manager', 'Manager'], ['cashier', 'Cashier']]) {
+    for (const [uid, role] of [['owner', 'Owner'], ['manager', 'Manager'], ['cashier', 'Cashier'], ['customer', 'Customer']]) {
       await setDoc(doc(database, 'users', uid), { uid, email: `${uid}@example.test`, role, status: 'active', allowedTabs: [] });
     }
     await setDoc(doc(database, 'menu_items', 'dish-1'), { id: 'dish-1', name: 'Rice Dish', price: 100, isAvailable: true, station: 'Kitchen' });
@@ -45,7 +51,10 @@ beforeEach(async () => {
     await setDoc(doc(database, 'raw_materials', 'rice'), {
       id: 'rice', name: 'Rice', unit: 'kg', currentStock: 3, unitCost: 20, reorderLevel: 1,
     });
-    await setDoc(doc(database, 'settings', 'restaurant'), { cgstRate: 2.5, sgstRate: 2.5, serviceCharge: 0, roundOff: false });
+    await setDoc(doc(database, 'settings', 'restaurant'), {
+      name: 'Test Kitchen', address: 'Market Road', gstin: 'TEST-GST',
+      cgstRate: 2.5, sgstRate: 2.5, serviceCharge: 0, roundOff: false,
+    });
   });
 });
 
@@ -62,6 +71,7 @@ test('POS bill, kitchen ticket, and stock ledger commit together; retry is idemp
   const order = await billing.placePosOrderCloud(input('TBK-test-1'), database);
   assert.equal(order.total, 210);
   assert.equal(order.paymentStatus, 'pending');
+  assert.equal(order.receiptBusiness.name, 'Test Kitchen');
   assert.equal((await getDoc(doc(database, 'raw_materials', 'rice'))).data().currentStock, 2);
   assert.equal((await getDocs(collection(database, 'stock_movements'))).size, 1);
   assert.equal((await getDocs(collection(database, 'kots'))).size, 1);
@@ -70,6 +80,9 @@ test('POS bill, kitchen ticket, and stock ledger commit together; retry is idemp
   assert.equal((await getDocs(collection(database, 'stock_movements'))).size, 1);
   assert.match(receipt.buildBillingReceiptHtml(order), /PAYMENT DUE/);
   assert.match(receipt.buildBillingReceiptHtml(order), /₹210\.00/);
+  await setDoc(doc(database, 'settings', 'restaurant'), { name: 'Renamed Kitchen' }, { merge: true });
+  assert.match(receipt.buildBillingReceiptHtml(order), /Test Kitchen/);
+  assert.doesNotMatch(receipt.buildBillingReceiptHtml(order), /Renamed Kitchen/);
 });
 
 test('paid status requires explicit confirmation and can be recorded once later', async () => {
@@ -134,4 +147,64 @@ test('receipt escapes guest and item text', () => {
   assert.doesNotMatch(html, /<script>/);
   assert.match(html, /&lt;script&gt;/);
   assert.match(html, /&lt;img&gt;/);
+});
+
+test('customer pickup request is confirmed by staff once, then reaches collection without collecting payment early', async () => {
+  const customerDb = as('customer');
+  const managerDb = as('manager');
+  await assert.rejects(takeaway.createTakeawayRequest({
+    customer: 'Test Guest', phone: '----------', items: [{ id: 'dish-1', qty: 1 }],
+  }, customerDb, { uid: 'customer' }), /valid phone number/);
+  const request = await takeaway.createTakeawayRequest({
+    customer: 'Test Guest', phone: '9876543210', items: [{ id: 'dish-1', qty: 2 }], notes: 'Less spice',
+  }, customerDb, { uid: 'customer' });
+  const order = await takeaway.acceptTakeawayRequest(request.id, { uid: 'manager', displayName: 'Test Manager' }, managerDb);
+  assert.equal(order.orderType, 'takeaway');
+  assert.equal(order.paymentStatus, 'pending');
+  assert.equal(order.total, 210);
+  assert.equal(order.customerUid, 'customer');
+  assert.equal(order.notes, 'Less spice');
+  assert.equal((await getDoc(doc(customerDb, 'orders', order.id))).data().status, 'received');
+  assert.equal((await getDoc(doc(customerDb, 'takeaway_requests', request.id))).data().status, 'accepted');
+  const kots = await getDocs(collection(managerDb, 'kots'));
+  assert.equal(kots.size, 1);
+  assert.match(kitchenTicket.buildKitchenTicketHtml(kots.docs[0].data()), /Less spice/);
+  assert.equal((await getDoc(doc(managerDb, 'raw_materials', 'rice'))).data().currentStock, 2);
+  await assert.rejects(takeaway.acceptTakeawayRequest(request.id, { uid: 'manager' }, managerDb), /already handled/);
+  await kitchen.advanceOrderCloud(order.id, 'cooking', managerDb);
+  await kitchen.advanceOrderCloud(order.id, 'ready', managerDb);
+  await kitchen.advanceOrderCloud(order.id, 'completed', managerDb);
+  assert.equal((await getDoc(doc(customerDb, 'orders', order.id))).data().status, 'completed');
+  assert.equal((await getDoc(doc(managerDb, 'raw_materials', 'rice'))).data().currentStock, 2);
+  assert.equal((await getDoc(doc(customerDb, 'orders', order.id))).data().paymentStatus, 'pending');
+});
+
+test('two staff confirming the same pickup request create one bill and one stock deduction', async () => {
+  const customerDb = as('customer');
+  const managerDb = as('manager');
+  const ownerDb = as('owner');
+  const request = await takeaway.createTakeawayRequest({
+    customer: 'Concurrent Guest', phone: '9876543210', items: [{ id: 'dish-1', qty: 2 }],
+  }, customerDb, { uid: 'customer' });
+  const results = await Promise.allSettled([
+    takeaway.acceptTakeawayRequest(request.id, { uid: 'manager' }, managerDb),
+    takeaway.acceptTakeawayRequest(request.id, { uid: 'owner' }, ownerDb),
+  ]);
+  assert.equal(results.filter((result) => result.status === 'fulfilled').length, 1);
+  assert.equal((await getDocs(collection(ownerDb, 'orders'))).size, 1);
+  assert.equal((await getDocs(collection(ownerDb, 'kots'))).size, 1);
+  assert.equal((await getDoc(doc(ownerDb, 'raw_materials', 'rice'))).data().currentStock, 2);
+});
+
+test('a handled pickup request cannot later be declined or billed', async () => {
+  const customerDb = as('customer');
+  const managerDb = as('manager');
+  const request = await takeaway.createTakeawayRequest({
+    customer: 'Pickup Guest', phone: '9876543210', items: [{ id: 'dish-1', qty: 1 }],
+  }, customerDb, { uid: 'customer' });
+  await takeaway.declineTakeawayRequest(request.id, managerDb);
+  await assert.rejects(takeaway.acceptTakeawayRequest(request.id, { uid: 'manager' }, managerDb), /already handled/);
+  await assert.rejects(takeaway.declineTakeawayRequest(request.id, managerDb), /already handled/);
+  assert.equal((await getDocs(collection(managerDb, 'orders'))).size, 0);
+  assert.equal((await getDoc(doc(managerDb, 'raw_materials', 'rice'))).data().currentStock, 3);
 });

@@ -25,6 +25,7 @@ import {
 import toast from 'react-hot-toast';
 import { isDemoMode, isInventoryOnly } from '../../firebase/config';
 import { saveSupplierCloud } from '../../services/inventoryCloud';
+import LoadingButton from '../../components/LoadingButton';
 
 export default function SuppliersPage() {
   const [suppliers, setSuppliers] = useState([]);
@@ -218,7 +219,7 @@ export default function SuppliersPage() {
 
       {/* Add / Edit Modal */}
       {isModalOpen && (
-        <div className="modal-backdrop" onClick={() => setIsModalOpen(false)}>
+        <div className="modal-backdrop" onClick={() => { if (!saving) setIsModalOpen(false); }}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '520px' }}>
             <h3 style={{ fontSize: 'var(--font-xl)', fontWeight: '700', marginBottom: '8px' }}>
               {editing ? 'Edit Supplier' : 'Add Supplier'}
@@ -276,8 +277,8 @@ export default function SuppliersPage() {
               </div>
 
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 'var(--space-2)' }}>
-                <button type="button" className="btn btn-secondary" onClick={() => setIsModalOpen(false)}>Cancel</button>
-                <button type="submit" className="btn btn-primary" disabled={saving}>{editing ? 'Update' : 'Add Supplier'}</button>
+                <button type="button" className="btn btn-secondary" disabled={saving} onClick={() => setIsModalOpen(false)}>Cancel</button>
+                <LoadingButton type="submit" className="btn btn-primary" loading={saving} loadingText={editing ? 'Updating supplier…' : 'Adding supplier…'}>{editing ? 'Update' : 'Add Supplier'}</LoadingButton>
               </div>
             </form>
           </div>

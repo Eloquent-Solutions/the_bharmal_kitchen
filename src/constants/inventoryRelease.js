@@ -13,6 +13,7 @@ export const INVENTORY_RELEASE_TABS = new Set([
   'inventory-utensils',
   'purchasing',
   'purchasing-bills',
+  'purchasing-orders',
   'purchasing-suppliers',
   'reports',
   'reports-inventory',
@@ -29,6 +30,7 @@ export const INVENTORY_RELEASE_ROUTES = new Set([
   '/inventory/utensils',
   '/purchasing',
   '/purchasing/bills',
+  '/purchasing/orders',
   '/purchasing/suppliers',
   '/reports',
   '/reports/inventory',
@@ -40,12 +42,21 @@ export const BILLING_RELEASE_TABS = new Set([
   'pos', 'orders', 'orders-history',
   'menu', 'menu-items', 'menu-categories',
   'inventory-recipes',
+  'settings-billing',
 ]);
 export const BILLING_RELEASE_ROLES = new Set([ROLES.OWNER, ROLES.ADMIN, ROLES.MANAGER]);
 export const BILLING_RELEASE_ROUTES = new Set([
   '/pos', '/orders', '/orders/history',
   '/menu', '/menu/items', '/menu/categories',
   '/inventory/recipes',
+  '/settings/billing',
+]);
+
+export const OPERATIONS_RELEASE_TABS = new Set([
+  'orders-active', 'kitchen', 'kitchen-kds', 'kitchen-kot',
+]);
+export const OPERATIONS_RELEASE_ROUTES = new Set([
+  '/orders/active', '/kitchen', '/kitchen/kds', '/kitchen/kot',
 ]);
 
 export function inventoryReleaseTabForPath(pathname) {

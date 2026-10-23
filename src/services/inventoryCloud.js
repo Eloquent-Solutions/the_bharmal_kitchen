@@ -172,6 +172,7 @@ export async function savePurchaseBillCloud(input, original = null, database = d
   const refs = [...new Map(lines.map((line) => [`${line.type}:${line.itemId}`, {
     key: `${line.type}:${line.itemId}`, type: line.type, ref: doc(database, line.type === 'utensil' ? 'utensils' : 'raw_materials', line.itemId),
   }])).values()];
+  const purchaseOrderRef = input.purchaseOrderId ? doc(database, 'purchase_orders', input.purchaseOrderId) : null;
   await runTransaction(database, async (transaction) => {
     const billSnapshot = await transaction.get(billRef);
     if (original) {
@@ -190,10 +191,38 @@ export async function savePurchaseBillCloud(input, original = null, database = d
     if (billSnapshot.exists()) {
       const existing = billSnapshot.data();
       if (existing.clientRequestId === clientRequestId && existing.invoiceNumber === input.invoiceNumber && existing.supplier === input.supplier
+        && (existing.purchaseOrderId || null) === (input.purchaseOrderId || null)
         && Number(existing.gstAmount || 0) === tax && JSON.stringify(existing.items) === JSON.stringify(lines)) return;
       throw new Error('This supplier invoice has already been recorded.');
     }
-    const snapshots = await Promise.all(refs.map(({ ref }) => transaction.get(ref)));
+    const [snapshots, purchaseOrderSnapshot] = await Promise.all([
+      Promise.all(refs.map(({ ref }) => transaction.get(ref))),
+      purchaseOrderRef ? transaction.get(purchaseOrderRef) : Promise.resolve(null),
+    ]);
+    let receivedOrderItems = null;
+    if (purchaseOrderRef) {
+      if (!purchaseOrderSnapshot.exists()) throw new Error('Purchase order was removed. Reload purchasing.');
+      const purchaseOrder = purchaseOrderSnapshot.data();
+      if (purchaseOrder.status === 'cancelled' || purchaseOrder.status === 'received' || purchaseOrder.supplier !== input.supplier) {
+        throw new Error('This purchase order is closed or its supplier does not match the bill.');
+      }
+      if (!Array.isArray(purchaseOrder.items) || !purchaseOrder.items.length) throw new Error('This purchase order has no itemized lines.');
+      const billedByKey = new Map();
+      for (const line of lines) {
+        const key = `${line.type}:${line.itemId}`;
+        billedByKey.set(key, roundedStock((billedByKey.get(key) || 0) + line.qty));
+      }
+      const orderedByKey = new Map(purchaseOrder.items.map((item) => [`${item.type}:${item.itemId}`, item]));
+      for (const [key, billedQty] of billedByKey) {
+        const ordered = orderedByKey.get(key);
+        if (!ordered || billedQty > roundedStock(Number(ordered.qty) - Number(ordered.receivedQty || 0)) + 0.0000001) {
+          throw new Error('Bill quantity exceeds the outstanding purchase order quantity. Reload the order.');
+        }
+      }
+      receivedOrderItems = purchaseOrder.items.map((item) => ({
+        ...item, receivedQty: roundedStock(Number(item.receivedQty || 0) + (billedByKey.get(`${item.type}:${item.itemId}`) || 0)),
+      }));
+    }
     for (const [index, entry] of refs.entries()) {
       const snapshot = snapshots[index];
       if (!snapshot.exists()) throw new Error('A bill item was removed. Reload purchasing.');
@@ -218,8 +247,68 @@ export async function savePurchaseBillCloud(input, original = null, database = d
       taxableAmount: subtotal, gstAmount: tax, totalAmount: billTotal,
       updatedAt: serverTimestamp(),
     });
+    if (purchaseOrderRef) {
+      const complete = receivedOrderItems.every((item) => item.receivedQty >= Number(item.qty) - 0.0000001);
+      transaction.update(purchaseOrderRef, {
+        items: receivedOrderItems, status: complete ? 'received' : 'partial', updatedAt: serverTimestamp(),
+      });
+    }
   });
   return id;
+}
+
+export async function savePurchaseOrderCloud(input, database = db) {
+  if (!database) throw new Error('Firebase is unavailable.');
+  if (!input.supplierId || !input.expectedDate || !Array.isArray(input.items) || !input.items.length) {
+    throw new Error('Choose a supplier, expected date, and at least one item.');
+  }
+  const id = input.id || newId('PO');
+  const items = input.items.map((item) => ({
+    type: item.type, itemId: item.itemId,
+    qty: quantity(item.qty, { integer: item.type === 'utensil' }),
+    unitCost: price(item.unitCost), receivedQty: 0,
+  }));
+  if (items.some((item) => !['raw_material', 'utensil'].includes(item.type) || !item.itemId)
+    || new Set(items.map((item) => `${item.type}:${item.itemId}`)).size !== items.length) {
+    throw new Error('Choose each existing inventory item only once.');
+  }
+  const supplierRef = doc(database, 'suppliers', input.supplierId);
+  const orderRef = doc(database, 'purchase_orders', id);
+  const itemRefs = items.map((item) => doc(database, item.type === 'utensil' ? 'utensils' : 'raw_materials', item.itemId));
+  await runTransaction(database, async (transaction) => {
+    const [order, supplier, snapshots] = await Promise.all([
+      transaction.get(orderRef), transaction.get(supplierRef), Promise.all(itemRefs.map((ref) => transaction.get(ref))),
+    ]);
+    if (order.exists()) throw new Error('This purchase order already exists. Reload purchasing.');
+    if (!supplier.exists()) throw new Error('Supplier was removed. Reload purchasing.');
+    const supplierName = supplier.data().name;
+    const lines = items.map((item, index) => {
+      if (!snapshots[index].exists()) throw new Error('An inventory item was removed. Reload purchasing.');
+      const inventoryItem = snapshots[index].data();
+      return { ...item, name: inventoryItem.name, unit: item.type === 'utensil' ? 'pcs' : inventoryItem.unit,
+        total: Number((item.qty * item.unitCost).toFixed(2)) };
+    });
+    transaction.set(orderRef, {
+      id, supplierId: input.supplierId, supplier: supplierName,
+      date: new Date().toISOString().slice(0, 10), expectedDate: input.expectedDate,
+      items: lines, itemsCount: lines.length,
+      totalAmount: Number(lines.reduce((sum, line) => sum + line.total, 0).toFixed(2)),
+      status: 'open', updatedAt: serverTimestamp(),
+    });
+  });
+  return id;
+}
+
+export async function cancelPurchaseOrderCloud(id, database = db) {
+  if (!database) throw new Error('Firebase is unavailable.');
+  const orderRef = doc(database, 'purchase_orders', id);
+  await runTransaction(database, async (transaction) => {
+    const snapshot = await transaction.get(orderRef);
+    if (!snapshot.exists()) throw new Error('Purchase order was removed. Reload purchasing.');
+    if (snapshot.data().status === 'received') throw new Error('A fully received purchase order cannot be cancelled.');
+    if (snapshot.data().status === 'cancelled') return;
+    transaction.update(orderRef, { status: 'cancelled', updatedAt: serverTimestamp() });
+  });
 }
 
 export async function saveUtensilCloud(input, original = null, database = db) {

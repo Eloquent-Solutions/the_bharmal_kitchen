@@ -30,6 +30,7 @@ import {
   requestNotificationPermission,
 } from '../../services/notificationService';
 import toast from 'react-hot-toast';
+import LoadingButton from '../../components/LoadingButton';
 
 export default function NotificationsSettingsPage() {
   const [settings, setSettings] = useState({
@@ -48,6 +49,7 @@ export default function NotificationsSettingsPage() {
   });
 
   const [saving, setSaving] = useState(false);
+  const [requestingPermission, setRequestingPermission] = useState(false);
   const [permissionStatus, setPermissionStatus] = useState('default');
 
   useEffect(() => {
@@ -79,13 +81,20 @@ export default function NotificationsSettingsPage() {
   };
 
   const handleRequestPush = async () => {
-    const granted = await requestNotificationPermission();
-    if (granted) {
-      setPermissionStatus('granted');
-      toast.success('Browser notification permission enabled!');
-    } else {
-      setPermissionStatus('denied');
-      toast.error('Permission not granted by browser.');
+    setRequestingPermission(true);
+    try {
+      const granted = await requestNotificationPermission();
+      if (granted) {
+        setPermissionStatus('granted');
+        toast.success('Browser notification permission enabled!');
+      } else {
+        setPermissionStatus('denied');
+        toast.error('Permission not granted by browser.');
+      }
+    } catch (error) {
+      toast.error(error.message);
+    } finally {
+      setRequestingPermission(false);
     }
   };
 
@@ -117,9 +126,9 @@ export default function NotificationsSettingsPage() {
             Configure real-time kitchen audio chimes, browser push alerts, and inventory stock warnings.
           </p>
         </div>
-        <button className="btn btn-primary" onClick={handleSave} disabled={saving}>
-          <Save size={16} /> {saving ? 'Saving...' : 'Save Settings'}
-        </button>
+        <LoadingButton className="btn btn-primary" onClick={handleSave} loading={saving} loadingText="Saving settings…">
+          <Save size={16} /> Save Settings
+        </LoadingButton>
       </div>
 
       {/* Audio & Kitchen Chimes */}
@@ -198,9 +207,9 @@ export default function NotificationsSettingsPage() {
             </div>
           </div>
           {permissionStatus !== 'granted' && (
-            <button className="btn btn-secondary btn-sm" onClick={handleRequestPush}>
+            <LoadingButton className="btn btn-secondary btn-sm" onClick={handleRequestPush} loading={requestingPermission} loadingText="Requesting permission…">
               Grant Permission
-            </button>
+            </LoadingButton>
           )}
         </div>
 

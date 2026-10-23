@@ -1,0 +1,15 @@
+.purchase-order-line {
+  display: grid;
+  grid-template-columns: minmax(100px, 1fr) minmax(140px, 2fr) 90px 110px auto;
+  gap: 8px;
+  align-items: end;
+}
+
+@media (max-width: 680px) {
+  .purchase-order-line {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    padding: 12px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+  }
+}

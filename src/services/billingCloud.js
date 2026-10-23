@@ -37,12 +37,17 @@ export async function placePosOrderCloud(input, database = db) {
   }
 
   const orderRef = doc(database, 'orders', id);
+  const requestRef = input.sourceRequestId ? doc(database, 'takeaway_requests', input.sourceRequestId) : null;
   const menuRefs = items.map((item) => doc(database, 'menu_items', item.id));
   const recipeRefs = items.map((item) => recipeByDish.get(item.id));
   const settingsRef = doc(database, 'settings', 'restaurant');
 
   return runTransaction(database, async (transaction) => {
     const existing = await transaction.get(orderRef);
+    const sourceRequest = requestRef ? await transaction.get(requestRef) : null;
+    if (requestRef && (!sourceRequest.exists() || sourceRequest.data().status !== 'pending' || sourceRequest.data().customerUid !== input.customerUid)) {
+      throw new Error('This pickup request was already handled. Reload requests.');
+    }
     if (existing.exists()) {
       if (existing.data().clientRequestId === id) return { id, ...existing.data() };
       throw new Error('This bill ID is already in use. Reload billing.');
@@ -92,7 +97,15 @@ export async function placePosOrderCloud(input, database = db) {
     const createdAt = new Date().toISOString();
     const order = {
       id, clientRequestId: id, orderType: input.orderType, table: input.orderType === 'dine_in' ? input.table.trim() : null,
+      receiptBusiness: {
+        name: settings.name || 'The Bharmals Kitchen', address: settings.address || '',
+        phone: settings.phone || '', email: settings.email || '',
+        gstin: settings.gstin || '', fssai: settings.fssai || '',
+      },
       customer: input.customer?.trim() || 'Walk-in Guest', phone: input.phone?.trim() || null,
+      customerUid: input.customerUid || null,
+      sourceRequestId: input.sourceRequestId || null,
+      notes: input.notes?.trim() || null,
       items: billedItems, ...totals, paymentMethod: input.paymentMethod,
       paymentStatus: input.paymentReceived ? 'paid' : 'pending',
       paidAt: input.paymentReceived ? createdAt : null, status: 'received',
@@ -100,10 +113,11 @@ export async function placePosOrderCloud(input, database = db) {
       updatedAt: serverTimestamp(),
     };
     transaction.set(orderRef, order);
+    if (requestRef) transaction.update(requestRef, { status: 'accepted', orderId: id, updatedAt: serverTimestamp() });
     transaction.set(doc(database, 'kots', `KOT-${id}`), {
       id: `KOT-${id}`, orderId: id, table: order.table || 'Takeaway',
       station: billedItems[0].station || 'Kitchen', items: billedItems.map((item) => `${item.name} (${item.qty})`).join(', '),
-      itemsList: billedItems, createdAt, status: 'active', updatedAt: serverTimestamp(),
+      itemsList: billedItems, notes: order.notes, createdAt, status: 'active', updatedAt: serverTimestamp(),
     });
     for (const [index, materialRef] of materialRefs.entries()) {
       const snapshot = materialSnapshots[index];

@@ -51,11 +51,13 @@ import { useAuth } from '../../hooks/useAuth';
 import { startOrderListener, stopOrderListener } from '../../services/realtimeOrderService';
 import { formatCurrency } from '../../utils/formatters';
 import { calculateOrderTotals } from '../../utils/calculations';
-import { isBillingEnabled, isDemoMode, isInventoryOnly } from '../../firebase/config';
+import { isBillingEnabled, isDemoMode, isInventoryOnly, isOperationsEnabled } from '../../firebase/config';
 import { PERMISSIONS } from '../../constants/roles';
 import { placePosOrderCloud } from '../../services/billingCloud';
 import { printBillingReceipt } from '../../utils/billingReceipt';
+import { isValidPickupPhone } from '../../utils/phone';
 import EmptyState from '../../components/EmptyState';
+import LoadingButton from '../../components/LoadingButton';
 import toast from 'react-hot-toast';
 import './POSPage.css';
 
@@ -73,7 +75,7 @@ export default function POSPage() {
   const [activeCategory, setActiveCategory] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');
   const [cart, setCart] = useState([]);
-  const [orderType, setOrderType] = useState('Dine-in');
+  const [orderType, setOrderType] = useState(isOperationsEnabled ? 'Takeaway' : 'Dine-in');
   const [selectedTable, setSelectedTable] = useState('');
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
@@ -91,6 +93,7 @@ export default function POSPage() {
     const handleSync = () => refreshData();
     window.addEventListener('tbk_tables_updated', handleSync);
     window.addEventListener('tbk_channel_settings_updated', handleSync);
+    window.addEventListener('tbk_restaurant_settings_updated', handleSync);
     for (const event of ['tbk_menu_items_updated', 'tbk_categories_updated', 'tbk_recipes_updated', 'tbk_raw_materials_updated']) {
       window.addEventListener(event, handleSync);
     }
@@ -108,6 +111,7 @@ export default function POSPage() {
       stopOrderListener();
       window.removeEventListener('tbk_tables_updated', handleSync);
       window.removeEventListener('tbk_channel_settings_updated', handleSync);
+      window.removeEventListener('tbk_restaurant_settings_updated', handleSync);
       for (const event of ['tbk_menu_items_updated', 'tbk_categories_updated', 'tbk_recipes_updated', 'tbk_raw_materials_updated']) {
         window.removeEventListener(event, handleSync);
       }
@@ -395,6 +399,10 @@ export default function POSPage() {
       toast.error('Enter a table number before saving a dine-in bill.');
       return;
     }
+    if (billingRelease && isOperationsEnabled && orderType === 'Takeaway' && (!customerName.trim() || !isValidPickupPhone(customerPhone))) {
+      toast.error('Enter the caller’s name and a valid phone number for takeaway.');
+      return;
+    }
 
     setPlacingOrder(true);
     try {
@@ -418,6 +426,10 @@ export default function POSPage() {
           captain: orderType === 'Dine-in' ? selectedCaptain : null,
           deliveryPartner: orderType === 'Delivery' ? deliveryPartner : null,
           items: cart.map((c) => ({ id: c.id, name: c.name, qty: c.quantity, price: c.price, isCombo: !!c.isCombo })),
+          receiptBusiness: {
+            name: restaurantSettings.name, address: restaurantSettings.address, phone: restaurantSettings.phone,
+            email: restaurantSettings.email, gstin: restaurantSettings.gstin, fssai: restaurantSettings.fssai,
+          },
           ...totals, status: 'received',
           paymentStatus: billingRelease && paymentReceived ? 'paid' : 'pending',
           paymentMethod: billingRelease ? paymentMethod : null,
@@ -730,10 +742,12 @@ export default function POSPage() {
 
         {/* Customer & Staff Assignment */}
         <div style={{ padding: 'var(--space-3)', display: 'flex', flexDirection: 'column', gap: '8px', borderBottom: '1px solid var(--border-color)' }}>
+          {billingRelease && isOperationsEnabled && orderType === 'Takeaway' && <p style={{ fontSize: 'var(--font-xs)', color: 'var(--text-secondary)' }}>Phone takeaway order: enter the caller’s details, then save the bill. Leave payment unchecked if they will pay at pickup.</p>}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
             <input
               type="text"
               className="input"
+              aria-label="Guest name"
               placeholder="Guest Name..."
               value={customerName}
               onChange={(e) => setCustomerName(e.target.value)}
@@ -742,6 +756,7 @@ export default function POSPage() {
             <input
               type="tel"
               className="input"
+              aria-label="Guest phone"
               placeholder="Guest Phone..."
               value={customerPhone}
               onChange={(e) => setCustomerPhone(e.target.value)}
@@ -851,9 +866,9 @@ export default function POSPage() {
               <CreditCard size={18} /> Pay via Smart Card (NFC)
             </button>}
 
-            <button className="pos-checkout-btn" onClick={handlePlaceOrder} disabled={placingOrder || cart.length === 0} style={{ opacity: placingOrder ? 0.6 : 0.9 }}>
-              <CheckCircle2 size={18} /> {placingOrder ? 'Saving bill...' : billingRelease ? 'Save Bill & Deduct Stock' : 'Place Order (Cash / UPI)'}
-            </button>
+            <LoadingButton className="pos-checkout-btn" onClick={handlePlaceOrder} disabled={cart.length === 0} loading={placingOrder} loadingText={billingRelease ? 'Saving bill and stock…' : 'Placing order…'} style={{ opacity: placingOrder ? 0.6 : 0.9 }}>
+              <CheckCircle2 size={18} /> {billingRelease ? 'Save Bill & Deduct Stock' : 'Place Order (Cash / UPI)'}
+            </LoadingButton>
             {billingRelease && lastOrder && <div className="card" style={{ padding: '12px', fontSize: 'var(--font-sm)' }}>
               <strong>Saved: {lastOrder.id}</strong><br />
               {lastOrder.paymentStatus === 'paid' ? 'Payment recorded' : 'Payment pending'} · {formatCurrency(lastOrder.total)}
@@ -950,15 +965,17 @@ export default function POSPage() {
                   </div>
                 )}
 
-                <button
+                <LoadingButton
                   type="button"
                   className={`btn ${isScanningNfc ? 'btn-danger' : 'btn-primary'}`}
                   style={{ width: '100%', padding: '14px', fontSize: 'var(--font-base)', fontWeight: '800', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px' }}
                   onClick={handleScanCardNfc}
+                  loading={isScanningNfc}
+                  loadingText="Scanning… Tap Smart Card on Phone"
                 >
                   <Wifi size={22} />
-                  {isScanningNfc ? 'Scanning... Tap Smart Card on Phone' : 'Tap Card with Phone NFC Reader'}
-                </button>
+                  Tap Card with Phone NFC Reader
+                </LoadingButton>
 
                 <div style={{ textAlign: 'center', fontSize: '11px', color: 'var(--text-tertiary)' }}>
                   — OR SELECT REGISTERED CARD PATRON —

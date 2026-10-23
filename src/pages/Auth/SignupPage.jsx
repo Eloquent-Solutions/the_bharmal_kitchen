@@ -7,6 +7,7 @@ import { useState, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import { isDemoMode } from '../../firebase/config';
+import LoadingButton from '../../components/LoadingButton';
 import { AlertCircle, Eye, EyeOff, Mail, Lock, User } from 'lucide-react';
 
 export default function SignupPage() {
@@ -76,9 +77,11 @@ export default function SignupPage() {
       <p className="auth-card-subtitle">Join The Bharmals Kitchen online ordering & portal</p>
 
       {/* Google Sign-up Button */}
-      <button
+      <LoadingButton
         type="button"
         onClick={handleGoogleSignUp}
+        loading={loading}
+        loadingText="Signing up with Google…"
         className="btn w-full"
         style={{
           display: 'flex',
@@ -104,7 +107,7 @@ export default function SignupPage() {
           <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" />
         </svg>
         Sign up with Google
-      </button>
+      </LoadingButton>
 
       <div className="auth-divider" style={{ margin: 'var(--space-3) 0' }}>or continue with email</div>
 
@@ -193,16 +196,9 @@ export default function SignupPage() {
           </div>
         </div>
 
-        <button type="submit" className="btn btn-primary btn-lg w-full" disabled={loading}>
-          {loading ? (
-            <>
-              <span className="spinner spinner-sm" />
-              Creating account...
-            </>
-          ) : (
-            'Create Account'
-          )}
-        </button>
+        <LoadingButton type="submit" className="btn btn-primary btn-lg w-full" loading={loading} loadingText="Creating account…">
+          Create Account
+        </LoadingButton>
       </form>
 
       <div className="auth-divider">or</div>

@@ -285,6 +285,7 @@ export default function CategoriesPage() {
                     onChange={(e) => setFormData({ ...formData, defaultStation: e.target.value })}
                   >
                     <option value="Tandoor">Tandoor Section</option>
+                    <option value="Chinese / Wok">Chinese / Wok</option>
                     <option value="Curry / Biryani">Curry / Biryani Handi</option>
                     <option value="Desserts & Beverages">Desserts & Beverages</option>
                     <option value="Cold / Salad Counter">Cold / Salad Counter</option>
