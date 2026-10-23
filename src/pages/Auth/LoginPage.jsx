@@ -83,7 +83,7 @@ export default function LoginPage() {
   return (
     <>
       <h2>Welcome Back</h2>
-      <p className="auth-card-subtitle">{isDemoMode ? 'Explore the app locally with a demo role' : isStaffOnly ? 'Staff sign-in' : 'Sign in to The Bharmals Kitchen portal'}</p>
+      {!isStaffOnly && <p className="auth-card-subtitle">{isDemoMode ? 'Explore the app locally with a demo role' : 'Sign in to The Bharmals Kitchen portal'}</p>}
 
       {/* Google Sign-In Button */}
       {!isDemoMode && <>
