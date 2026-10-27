@@ -7,7 +7,7 @@
  */
 
 import { lazy, Suspense } from 'react';
-import { createBrowserRouter, Navigate, Outlet } from 'react-router-dom';
+import { createBrowserRouter, Navigate, Outlet, useLocation } from 'react-router-dom';
 import AppLayout from '../layouts/AppLayout';
 import AuthLayout from '../layouts/AuthLayout';
 import RouteErrorPage from './RouteErrorPage';
@@ -132,9 +132,12 @@ function SuspenseWrap({ children }) {
 // ─── Smart Root Redirector ─────────────────────────────────
 function RootRoute() {
   const { user, isCustomer, loading } = useAuth();
+  const { search } = useLocation();
   if (loading) return <PageLoader />;
-  if (!user) return <Navigate to={isStaffOnly ? '/login' : '/order'} replace />;
-  if (isCustomer) return <Navigate to={isStaffOnly && !isCustomerTakeawayEnabled ? '/access-pending' : '/order'} replace />;
+  if (!user) return isCustomerTakeawayEnabled
+    ? <SuspenseWrap><CustomerTakeawayPage /></SuspenseWrap>
+    : <Navigate to={isStaffOnly ? '/login' : '/order'} replace />;
+  if (isCustomer) return <Navigate to={isStaffOnly && !isCustomerTakeawayEnabled ? '/access-pending' : { pathname: '/order', search }} replace />;
   return <Navigate to={isInventoryOnly ? INVENTORY_HOME : '/dashboard'} replace />;
 }
 
@@ -149,7 +152,9 @@ function StaffOnlyRoute({ children }) {
 
 function CustomerTakeawayRoute() {
   const { user, isCustomer, loading } = useAuth();
+  const { search } = useLocation();
   if (loading) return <PageLoader />;
+  if (!user) return <Navigate to={{ pathname: '/', search }} replace />;
   if (user && !isCustomer) return <Navigate to="/pos" replace />;
   return <SuspenseWrap><CustomerTakeawayPage /></SuspenseWrap>;
 }
@@ -286,7 +291,7 @@ const routes = [
     ],
   },
 
-  // Root redirect (Smart: customers/new users go to /order, staff to /dashboard)
+  // Public landing for signed-out customers; signed-in users go to their workspace.
   { path: '/', element: <RootRoute /> },
 
   // Catch-all 404

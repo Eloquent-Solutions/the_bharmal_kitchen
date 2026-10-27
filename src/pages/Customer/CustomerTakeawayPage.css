@@ -278,6 +278,7 @@
 .takeaway-history-list svg { flex: none; color: var(--color-primary); }
 .takeaway-footer { padding: 24px 16px 30px; border-top: 1px solid rgba(255, 255, 255, .07); color: var(--text-tertiary); font-size: .8rem; text-align: center; }
 .takeaway-footer span { margin-inline: 6px; }
+.takeaway-footer a { color: var(--color-primary-light); }
 .takeaway-mobile-cart { display: none; }
 
 @media (max-width: 1050px) {

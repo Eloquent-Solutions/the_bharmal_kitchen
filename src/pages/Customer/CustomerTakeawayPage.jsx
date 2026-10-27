@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { collection, doc, onSnapshot } from 'firebase/firestore';
-import { useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { ArrowRight, Check, Clock3, MapPin, Minus, Plus, Search, ShoppingBag, X } from 'lucide-react';
 import { db } from '../../firebase/config';
@@ -268,6 +268,6 @@ export default function CustomerTakeawayPage() {
       {user && requests.length > 0 && <section id="my-orders" className="takeaway-history" aria-labelledby="takeaway-history-title"><div className="takeaway-section-heading"><div><span className="takeaway-section-kicker">STAY UP TO DATE</span><h2 id="takeaway-history-title">Your pickup requests</h2></div></div><div className="takeaway-history-list">{[...requests].sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt))).slice(0, 10).map((entry) => <button key={entry.id} type="button" onClick={() => { setSearchParams({ request: entry.id }); window.scrollTo({ top: 0, behavior: 'smooth' }); }}><span><strong>{entry.id}</strong><small>{entry.status === 'pending' ? 'Awaiting confirmation' : entry.status === 'accepted' ? 'Confirmed' : 'Unable to accept'}</small></span><ArrowRight size={18} /></button>)}</div></section>}
     </main>
     {user && !requestId && itemCount > 0 && !cartVisible && <a className="takeaway-mobile-cart" href="#pickup-checkout"><span><ShoppingBag size={19} /> {itemCount} {itemCount === 1 ? 'item' : 'items'}</span><strong>{formatCurrency(estimate)}</strong><span>View order <ArrowRight size={16} /></span></a>}
-    <footer className="takeaway-footer">The Bharmals Kitchen · {PICKUP_ADDRESS} <span>·</span> Made fresh for pickup</footer>
+    <footer className="takeaway-footer">The Bharmals Kitchen · {PICKUP_ADDRESS} <span>·</span> Made fresh for pickup {!user && <><span>·</span><Link to="/login">Team portal</Link></>}</footer>
   </div>;
 }

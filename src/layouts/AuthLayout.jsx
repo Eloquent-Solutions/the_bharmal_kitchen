@@ -5,7 +5,7 @@
 
 import { Outlet, Navigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
-import { isStaffOnly } from '../firebase/config';
+import { isStaffOnly, isCustomerTakeawayEnabled } from '../firebase/config';
 import './AuthLayout.css';
 
 export default function AuthLayout() {
@@ -21,7 +21,7 @@ export default function AuthLayout() {
 
   // If already authenticated, redirect to dashboard
   if (user) {
-    return <Navigate to={isCustomer ? (isStaffOnly ? '/access-pending' : '/order') : '/dashboard'} replace />;
+    return <Navigate to={isCustomer ? (isStaffOnly && !isCustomerTakeawayEnabled ? '/access-pending' : '/order') : '/dashboard'} replace />;
   }
 
   return (
