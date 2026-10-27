@@ -18,6 +18,7 @@ const CATEGORY_IMAGES = {
 };
 const DEFAULT_IMAGE = '/images/customer-menu/rice.jpg';
 const CATEGORY_ORDER = ['Starters', 'Indian Gravy', 'Rice', 'Noodles'];
+const PICKUP_ADDRESS = 'Bhagwatipura Main Road, Near Sukhsagar Hall, Rajkot - 360002';
 
 function dishImage(item) {
   const url = String(item.image || '').trim();
@@ -204,7 +205,7 @@ export default function CustomerTakeawayPage() {
               : user ? <button className="btn btn-primary btn-lg" onClick={() => { setSearchParams({}); setRequest(null); }}>Start a new order <ArrowRight size={18} /></button>
                 : <LoadingButton className="btn btn-primary btn-lg" loading={authBusy} loadingText="Signing in…" onClick={handleGoogleSignIn}>Continue with Google <ArrowRight size={18} /></LoadingButton>}
           </div>
-          <div className="takeaway-hero-facts"><span><Clock3 size={17} /> Freshly prepared</span><span><MapPin size={17} /> Pickup in Fort, Mumbai</span></div>
+          <div className="takeaway-hero-facts"><span><Clock3 size={17} /> Freshly prepared</span><span><MapPin size={17} /> Pickup at {PICKUP_ADDRESS}</span></div>
         </div>
         <div className="takeaway-hero-photo" role="img" aria-label="Illustrative Indian meal"><span>Made with care<br /><strong>at The Bharmals Kitchen</strong></span></div>
       </section>
@@ -267,6 +268,6 @@ export default function CustomerTakeawayPage() {
       {user && requests.length > 0 && <section id="my-orders" className="takeaway-history" aria-labelledby="takeaway-history-title"><div className="takeaway-section-heading"><div><span className="takeaway-section-kicker">STAY UP TO DATE</span><h2 id="takeaway-history-title">Your pickup requests</h2></div></div><div className="takeaway-history-list">{[...requests].sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt))).slice(0, 10).map((entry) => <button key={entry.id} type="button" onClick={() => { setSearchParams({ request: entry.id }); window.scrollTo({ top: 0, behavior: 'smooth' }); }}><span><strong>{entry.id}</strong><small>{entry.status === 'pending' ? 'Awaiting confirmation' : entry.status === 'accepted' ? 'Confirmed' : 'Unable to accept'}</small></span><ArrowRight size={18} /></button>)}</div></section>}
     </main>
     {user && !requestId && itemCount > 0 && !cartVisible && <a className="takeaway-mobile-cart" href="#pickup-checkout"><span><ShoppingBag size={19} /> {itemCount} {itemCount === 1 ? 'item' : 'items'}</span><strong>{formatCurrency(estimate)}</strong><span>View order <ArrowRight size={16} /></span></a>}
-    <footer className="takeaway-footer">The Bharmals Kitchen · Fort, Mumbai <span>·</span> Made fresh for pickup</footer>
+    <footer className="takeaway-footer">The Bharmals Kitchen · {PICKUP_ADDRESS} <span>·</span> Made fresh for pickup</footer>
   </div>;
 }
