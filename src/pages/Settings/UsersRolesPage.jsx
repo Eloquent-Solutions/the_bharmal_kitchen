@@ -28,15 +28,15 @@ import {
 } from '../../services/dataService';
 import { NAVIGATION } from '../../constants/navigation';
 import { ROLES } from '../../constants/roles';
-import { isBillingEnabled, isDemoMode, isInventoryOnly, isOperationsEnabled } from '../../firebase/config';
-import { BILLING_RELEASE_ROLES, BILLING_RELEASE_TABS, INVENTORY_RELEASE_TABS, OPERATIONS_RELEASE_TABS } from '../../constants/inventoryRelease';
+import { isBillingEnabled, isDemoMode, isInventoryOnly, isOperationsEnabled, isFinanceEnabled } from '../../firebase/config';
+import { BILLING_RELEASE_ROLES, BILLING_RELEASE_TABS, INVENTORY_RELEASE_TABS, OPERATIONS_RELEASE_TABS, FINANCE_RELEASE_ROLES, FINANCE_RELEASE_TABS } from '../../constants/inventoryRelease';
 import { saveUserAccessCloud } from '../../services/inventoryCloud';
 import toast from 'react-hot-toast';
 import LoadingButton from '../../components/LoadingButton';
 
 // All available tab IDs from the navigation
 const VISIBLE_NAVIGATION = isInventoryOnly
-  ? NAVIGATION.filter((n) => INVENTORY_RELEASE_TABS.has(n.id) || (isBillingEnabled && BILLING_RELEASE_TABS.has(n.id)) || (isOperationsEnabled && OPERATIONS_RELEASE_TABS.has(n.id)))
+  ? NAVIGATION.filter((n) => INVENTORY_RELEASE_TABS.has(n.id) || (isBillingEnabled && BILLING_RELEASE_TABS.has(n.id)) || (isOperationsEnabled && OPERATIONS_RELEASE_TABS.has(n.id)) || (isFinanceEnabled && FINANCE_RELEASE_TABS.has(n.id)))
   : NAVIGATION;
 const ALL_TAB_IDS = VISIBLE_NAVIGATION.map((n) => n.id);
 
@@ -67,8 +67,9 @@ const INVENTORY_ROLE_DESCRIPTIONS = {
 
 const RELEASE_ROLE_DESCRIPTIONS = isBillingEnabled ? {
   ...INVENTORY_ROLE_DESCRIPTIONS,
-  Owner: 'Inventory, customer POS billing, supplier bills, menu, and staff access.',
-  Manager: 'Inventory, customer POS billing, supplier bills, menu, and valuation.',
+  Owner: isFinanceEnabled ? 'Inventory, billing, finance, reports, and access management.' : 'Inventory, customer POS billing, supplier bills, menu, and staff access.',
+  Manager: isFinanceEnabled ? 'Inventory, billing, finance, and operational reports.' : 'Inventory, customer POS billing, supplier bills, menu, and valuation.',
+  Accountant: isFinanceEnabled ? 'Read-only finance, sales, cost, profit, tax, and inventory reports.' : 'Inventory valuation report.',
   'Inventory Manager': 'Inventory, supplier bills, receiving, suppliers, and valuation.',
 } : INVENTORY_ROLE_DESCRIPTIONS;
 
@@ -111,7 +112,7 @@ export default function UsersRolesPage() {
       if (['Owner', 'Admin', 'Manager'].includes(role)) return [...ALL_TAB_IDS];
       if (role === 'Inventory Manager') return ['inventory', 'purchasing', 'reports'];
       if (role === 'Chef') return ['inventory'];
-      if (role === 'Accountant') return ['reports'];
+      if (role === 'Accountant') return isFinanceEnabled ? ['finance', 'reports'] : ['reports'];
       return [];
     }
     switch (role) {
@@ -289,7 +290,8 @@ export default function UsersRolesPage() {
   const TabGrid = ({ selectedTabs, onToggle, role }) => (
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: '6px', marginTop: '4px' }}>
       {VISIBLE_NAVIGATION.filter((nav) =>
-        !isInventoryOnly || !isBillingEnabled || !BILLING_RELEASE_TABS.has(nav.id) || BILLING_RELEASE_ROLES.has(role)
+        (!isInventoryOnly || !isBillingEnabled || !BILLING_RELEASE_TABS.has(nav.id) || BILLING_RELEASE_ROLES.has(role))
+        && (!isInventoryOnly || !FINANCE_RELEASE_TABS.has(nav.id) || FINANCE_RELEASE_ROLES.has(role))
       ).map((nav) => {
         const isSelected = selectedTabs.includes(nav.id);
         return (

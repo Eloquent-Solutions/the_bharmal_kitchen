@@ -1,5 +1,6 @@
 import { doc, runTransaction, serverTimestamp, setDoc } from 'firebase/firestore';
-import { auth, db } from '../firebase/config';
+import { auth, db, isFinanceEnabled } from '../firebase/config';
+import { readRegisterContext, writePaymentEntry } from './financeCloud';
 
 const newId = (prefix) => `${prefix}-${crypto.randomUUID()}`;
 const roundedStock = (value) => Number(value.toFixed(3));
@@ -149,7 +150,7 @@ export async function saveWastageCloud(input, database = db) {
   return id;
 }
 
-export async function savePurchaseBillCloud(input, original = null, database = db) {
+export async function savePurchaseBillCloud(input, original = null, database = db, actor = auth?.currentUser) {
   if (!database) throw new Error('Firebase is unavailable.');
   if (!input.supplier?.trim() || !input.invoiceNumber?.trim() || !Array.isArray(input.items) || input.items.length === 0) {
     throw new Error('Supplier, vendor invoice number, and bill items are required.');
@@ -181,11 +182,17 @@ export async function savePurchaseBillCloud(input, original = null, database = d
         throw new Error('Received bill supplier and invoice number cannot be changed.');
       }
       if (input.paymentStatus !== 'paid') throw new Error('Received bills cannot be edited. Record a stock correction instead.');
+      if (billSnapshot.data().paymentStatus === 'paid') return;
+      const finance = isFinanceEnabled ? await readRegisterContext(transaction, database) : null;
       transaction.update(billRef, {
         paymentStatus: 'paid',
+        ...(finance ? { paymentMethod: input.paymentMethod, paymentEntryId: `PUR-${id}`, paymentShiftId: finance.shift.id,
+          paymentBusinessDate: finance.register.businessDate } : {}),
         paidAt: billSnapshot.data().paidAt || new Date().toISOString(),
         updatedAt: serverTimestamp(),
       });
+      if (finance) writePaymentEntry(transaction, database, finance, { id: `PUR-${id}`, referenceId: id,
+        kind: 'supplier_payment', method: input.paymentMethod, amount: billSnapshot.data().totalAmount, actor });
       return;
     }
     if (billSnapshot.exists()) {
@@ -223,6 +230,7 @@ export async function savePurchaseBillCloud(input, original = null, database = d
         ...item, receivedQty: roundedStock(Number(item.receivedQty || 0) + (billedByKey.get(`${item.type}:${item.itemId}`) || 0)),
       }));
     }
+    const finance = isFinanceEnabled && input.paymentStatus === 'paid' ? await readRegisterContext(transaction, database) : null;
     for (const [index, entry] of refs.entries()) {
       const snapshot = snapshots[index];
       if (!snapshot.exists()) throw new Error('A bill item was removed. Reload purchasing.');
@@ -243,10 +251,13 @@ export async function savePurchaseBillCloud(input, original = null, database = d
     transaction.set(billRef, {
       ...input, id, clientRequestId, items: lines, billDate: input.billDate || new Date().toISOString().slice(0, 10),
       paymentStatus: input.paymentStatus || 'pending',
+      ...(finance ? { paymentEntryId: `PUR-${id}`, paymentShiftId: finance.shift.id, paymentBusinessDate: finance.register.businessDate } : {}),
       paidAt: input.paymentStatus === 'paid' ? new Date().toISOString() : null,
       taxableAmount: subtotal, gstAmount: tax, totalAmount: billTotal,
       updatedAt: serverTimestamp(),
     });
+    if (finance) writePaymentEntry(transaction, database, finance, { id: `PUR-${id}`, referenceId: id,
+      kind: 'supplier_payment', method: input.paymentMethod, amount: billTotal, actor });
     if (purchaseOrderRef) {
       const complete = receivedOrderItems.every((item) => item.receivedQty >= Number(item.qty) - 0.0000001);
       transaction.update(purchaseOrderRef, {

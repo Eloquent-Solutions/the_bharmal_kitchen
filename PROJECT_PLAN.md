@@ -4,6 +4,20 @@
 ### 1. Vision & Strategy
 Deliver a high-speed, multi-device, offline-resilient restaurant management system specifically tailored for **The Bharmals Kitchen**, handling fine dining, takeaway, delivery dispatch, KOT station routing, inventory BOM deduction, and staff payroll.
 
+### Current release priorities — 28 October 2026
+
+The current business focus is takeaway and pickup. Keep table service, the floor plan, reservations, and waitlist hidden until the final release stage. Revisit these together when dine-in becomes a priority.
+
+Customer Google sign-in, pickup requests, staff confirmation, phone takeaway billing, kitchen status, and pay at pickup are part of the current release. Customer ordering is no longer a pending module.
+
+Menu modifiers and combos still need integration with the released checkout, recipe deductions, kitchen tickets, and receipts. Purchase orders are already included in the current staff release routes; itemized ordering, partial receiving through supplier bills, and cancelling outstanding quantities are implemented. Confirm the actual supplier workflow before treating purchase orders as accepted by the business.
+
+Finance and reporting implementation is prepared on `codex/finance-reports` for development review: operating expenses, register cash movements, cashier register shifts, reconciliation, saved day closes, sales, orders, food cost, estimated operating profit, and recorded sales tax. Enable `VITE_FINANCE_ENABLED=true` only with the matching Firestore rules. This implementation has not been released to production.
+
+Staff attendance, employee scheduling, leave, payroll, and staff reports are deferred to the final phase alongside table service. Register shifts in Finance track till opening and handover; they do not manage employee schedules. Most restaurant and printer settings remain separate review work. User access management, billing settings, and inventory valuation are already included in the release.
+
+The historical implementation table below describes screen coverage, not production acceptance.
+
 ---
 
 ### 2. Phased Implementation Timeline

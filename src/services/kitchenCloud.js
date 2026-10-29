@@ -1,5 +1,6 @@
 import { doc, runTransaction, serverTimestamp } from 'firebase/firestore';
-import { db } from '../firebase/config';
+import { db, isFinanceEnabled } from '../firebase/config';
+import { readRegisterContext, writeRegisterMutation } from './financeCloud';
 
 const allowedTransitions = {
   received: ['cooking', 'cancelled'],
@@ -15,11 +16,20 @@ export async function advanceOrderCloud(orderId, status, database = db) {
     if (!snapshot.exists()) throw new Error('Order no longer exists. Reload the queue.');
     const current = snapshot.data().status;
     if (!allowedTransitions[current]?.includes(status)) throw new Error(`Cannot move ${current} order to ${status}. Reload the queue.`);
+    let finance = null;
+    if (status === 'cancelled' && isFinanceEnabled) {
+      if (snapshot.data().paymentStatus === 'paid') throw new Error('A paid bill needs a recorded refund before cancellation. Contact the owner.');
+      finance = await readRegisterContext(transaction, database);
+      if (snapshot.data().businessDate && snapshot.data().businessDate !== finance.register.businessDate) {
+        throw new Error('This bill belongs to a closed business day. Contact the owner.');
+      }
+    }
     transaction.update(ref, {
       status,
       ...(status === 'cooking' ? { cookingStartedAt: new Date().toISOString() } : {}),
       updatedAt: serverTimestamp(),
     });
+    if (finance) writeRegisterMutation(transaction, database, finance);
   });
 }
 

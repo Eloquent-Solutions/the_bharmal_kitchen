@@ -10,8 +10,8 @@ import { useState, useCallback } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import { NAVIGATION } from '../../constants/navigation';
-import { BILLING_RELEASE_ROLES, BILLING_RELEASE_TABS, INVENTORY_RELEASE_TABS, OPERATIONS_RELEASE_TABS } from '../../constants/inventoryRelease';
-import { isBillingEnabled, isInventoryOnly, isOperationsEnabled } from '../../firebase/config';
+import { BILLING_RELEASE_ROLES, BILLING_RELEASE_TABS, INVENTORY_RELEASE_TABS, OPERATIONS_RELEASE_TABS, FINANCE_RELEASE_ROLES, FINANCE_RELEASE_TABS } from '../../constants/inventoryRelease';
+import { isBillingEnabled, isInventoryOnly, isOperationsEnabled, isFinanceEnabled } from '../../firebase/config';
 import {
   LayoutDashboard, ShoppingCart, ClipboardList, ChefHat,
   Grid3X3, UtensilsCrossed, Package, Truck, Users,
@@ -40,14 +40,16 @@ export default function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose
 
   // Filter top-level items by permission & admin-configured allowedTabs
   const filteredNav = NAVIGATION.filter((item) =>
-    (!isInventoryOnly || INVENTORY_RELEASE_TABS.has(item.id) || (isBillingEnabled && BILLING_RELEASE_TABS.has(item.id)) || (isOperationsEnabled && OPERATIONS_RELEASE_TABS.has(item.id)))
+    (!isInventoryOnly || INVENTORY_RELEASE_TABS.has(item.id) || (isBillingEnabled && BILLING_RELEASE_TABS.has(item.id)) || (isOperationsEnabled && OPERATIONS_RELEASE_TABS.has(item.id)) || (isFinanceEnabled && FINANCE_RELEASE_TABS.has(item.id)))
+    && (!isInventoryOnly || !FINANCE_RELEASE_TABS.has(item.id) || FINANCE_RELEASE_ROLES.has(role))
     && (!isInventoryOnly || !BILLING_RELEASE_TABS.has(item.id) || billingRoleAllowed)
     && hasAnyPermission(item.permissions)
     && isTabAllowed(item.id)
   ).map((item) => {
     if (item.children && item.children.length > 0) {
       const allowedChildren = item.children.filter((child) =>
-        (!isInventoryOnly || INVENTORY_RELEASE_TABS.has(child.id) || (isBillingEnabled && BILLING_RELEASE_TABS.has(child.id)) || (isOperationsEnabled && OPERATIONS_RELEASE_TABS.has(child.id)))
+        (!isInventoryOnly || INVENTORY_RELEASE_TABS.has(child.id) || (isBillingEnabled && BILLING_RELEASE_TABS.has(child.id)) || (isOperationsEnabled && OPERATIONS_RELEASE_TABS.has(child.id)) || (isFinanceEnabled && FINANCE_RELEASE_TABS.has(child.id)))
+        && (!isInventoryOnly || !FINANCE_RELEASE_TABS.has(child.id) || FINANCE_RELEASE_ROLES.has(role))
         && (!isInventoryOnly || !BILLING_RELEASE_TABS.has(child.id) || billingRoleAllowed)
         && isTabAllowed(child.id)
       );

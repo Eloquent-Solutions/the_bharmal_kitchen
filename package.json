@@ -11,7 +11,9 @@
     "test:inventory": "node --test tests/inventory.flow.test.mjs",
     "test:inventory:cloud": "firebase emulators:exec --only firestore --project demo-tbk-inventory 'node --test tests/inventory.cloud.test.mjs'",
     "test:billing:cloud": "firebase emulators:exec --only firestore --project demo-tbk-billing 'node --test tests/billing.cloud.test.mjs'",
-    "test:rules": "firebase emulators:exec --only firestore --project demo-tbk-rules 'node --test tests/firestore.rules.test.mjs'"
+    "test:rules": "firebase emulators:exec --only firestore --project demo-tbk-rules 'node --test tests/firestore.rules.test.mjs'",
+    "test:finance": "node --test tests/finance.test.mjs",
+    "test:finance:cloud": "firebase emulators:exec --only firestore --project demo-tbk-finance 'node --test tests/finance.cloud.test.mjs'"
   },
   "dependencies": {
     "date-fns": "^4.1.0",

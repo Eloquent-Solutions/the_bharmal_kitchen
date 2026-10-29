@@ -59,6 +59,16 @@ export const OPERATIONS_RELEASE_ROUTES = new Set([
   '/orders/active', '/kitchen', '/kitchen/kds', '/kitchen/kot',
 ]);
 
+export const FINANCE_RELEASE_ROLES = new Set([ROLES.OWNER, ROLES.ADMIN, ROLES.MANAGER, ROLES.ACCOUNTANT]);
+export const FINANCE_RELEASE_TABS = new Set([
+  'finance', 'finance-expenses', 'finance-cash-drawer', 'finance-shifts', 'finance-day-close',
+  'reports-sales', 'reports-orders', 'reports-food-cost', 'reports-profit', 'reports-tax',
+]);
+export const FINANCE_RELEASE_ROUTES = new Set([
+  '/finance', '/finance/expenses', '/finance/cash-drawer', '/finance/shifts', '/finance/day-close',
+  '/reports/sales', '/reports/orders', '/reports/food-cost', '/reports/profit', '/reports/tax',
+]);
+
 export function inventoryReleaseTabForPath(pathname) {
   if (pathname === '/inventory') return 'inventory';
   if (pathname === '/purchasing') return 'purchasing';

@@ -8,9 +8,9 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Outlet, Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
-import { isStaffOnly, isInventoryOnly, isBillingEnabled, isOperationsEnabled, isCustomerTakeawayEnabled, isDemoMode } from '../firebase/config';
+import { isStaffOnly, isInventoryOnly, isBillingEnabled, isOperationsEnabled, isCustomerTakeawayEnabled, isDemoMode, isFinanceEnabled } from '../firebase/config';
 import { getInventorySyncState } from '../services/dataService';
-import { BILLING_RELEASE_ROLES, BILLING_RELEASE_ROUTES, INVENTORY_HOME, INVENTORY_RELEASE_ROUTES, OPERATIONS_RELEASE_ROUTES, inventoryReleaseTabForPath } from '../constants/inventoryRelease';
+import { BILLING_RELEASE_ROLES, BILLING_RELEASE_ROUTES, INVENTORY_HOME, INVENTORY_RELEASE_ROUTES, OPERATIONS_RELEASE_ROUTES, FINANCE_RELEASE_ROLES, FINANCE_RELEASE_ROUTES, inventoryReleaseTabForPath } from '../constants/inventoryRelease';
 import { PERMISSIONS, ROLES } from '../constants/roles';
 import Sidebar from '../components/Sidebar/Sidebar';
 import TopBar from '../components/TopBar/TopBar';
@@ -86,7 +86,8 @@ export default function AppLayout() {
 
   if (isInventoryOnly) {
     const operationsPath = isOperationsEnabled && OPERATIONS_RELEASE_ROUTES.has(location.pathname);
-    if (!INVENTORY_RELEASE_ROUTES.has(location.pathname) && !(isBillingEnabled && BILLING_RELEASE_ROUTES.has(location.pathname)) && !operationsPath) {
+    const financePath = isFinanceEnabled && FINANCE_RELEASE_ROUTES.has(location.pathname);
+    if (!INVENTORY_RELEASE_ROUTES.has(location.pathname) && !(isBillingEnabled && BILLING_RELEASE_ROUTES.has(location.pathname)) && !operationsPath && !financePath) {
       return <Navigate to={INVENTORY_HOME} replace />;
     }
     const billingPath = isBillingEnabled && BILLING_RELEASE_ROUTES.has(location.pathname) && !operationsPath;
@@ -95,7 +96,9 @@ export default function AppLayout() {
       : operationsPath && location.pathname.startsWith('/kitchen')
         ? (location.pathname === '/kitchen' ? 'kitchen' : inventoryReleaseTabForPath(location.pathname))
       : inventoryReleaseTabForPath(location.pathname);
-    const requiredPermission = operationsPath
+    const requiredPermission = financePath
+      ? location.pathname.startsWith('/reports') ? PERMISSIONS.VIEW_REPORTS : PERMISSIONS.VIEW_FINANCIALS
+      : operationsPath
       ? location.pathname.startsWith('/kitchen') ? PERMISSIONS.VIEW_KITCHEN : PERMISSIONS.CREATE_ORDER
       : billingPath
       ? location.pathname.startsWith('/settings')
@@ -114,6 +117,7 @@ export default function AppLayout() {
           : PERMISSIONS.MANAGE_INVENTORY;
     const authorized = hasPermission(requiredPermission)
       && isTabAllowed(tab)
+      && (!financePath || FINANCE_RELEASE_ROLES.has(role))
       && (!billingPath || BILLING_RELEASE_ROLES.has(role))
       && (!operationsPath || [ROLES.OWNER, ROLES.ADMIN, ROLES.MANAGER, ROLES.CHEF, ROLES.KITCHEN_STAFF].includes(role))
       && (!location.pathname.startsWith('/settings') || [ROLES.OWNER, ROLES.ADMIN].includes(role));

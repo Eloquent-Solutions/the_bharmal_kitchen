@@ -35,12 +35,16 @@ import {
 } from '../../services/dataService';
 import { formatCurrency, formatDate, formatRecordId } from '../../utils/formatters';
 import toast from 'react-hot-toast';
-import { isDemoMode, isInventoryOnly } from '../../firebase/config';
+import { isDemoMode, isInventoryOnly, isFinanceEnabled } from '../../firebase/config';
+import { useAuth } from '../../hooks/useAuth';
 import { savePurchaseBillCloud } from '../../services/inventoryCloud';
 import EmptyState from '../../components/EmptyState';
 import './PurchaseBillsPage.css';
 
 export default function PurchaseBillsPage() {
+  const { role } = useAuth();
+  const canRecordPayment = !isFinanceEnabled || ['Owner', 'Admin', 'Manager'].includes(role);
+  const [supplierPaymentMethod, setSupplierPaymentMethod] = useState('bank');
   const [searchParams, setSearchParams] = useSearchParams();
   const requestedOrderId = searchParams.get('purchaseOrderId');
   const openedOrderRef = useRef(null);
@@ -63,6 +67,7 @@ export default function PurchaseBillsPage() {
     billDate: new Date().toISOString().split('T')[0],
     dueDate: '',
     paymentStatus: 'pending',
+    paymentMethod: 'bank',
     purchaseOrderId: '',
     gstAmount: 0,
     items: [],
@@ -95,6 +100,7 @@ export default function PurchaseBillsPage() {
       billDate: new Date().toISOString().split('T')[0],
       dueDate: new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0],
       paymentStatus: 'pending',
+      paymentMethod: 'bank',
       purchaseOrderId: order?.id || '',
       gstAmount: 0,
       items: order ? order.items.filter((item) => Number(item.qty) > Number(item.receivedQty || 0)).map((item) => {
@@ -137,6 +143,7 @@ export default function PurchaseBillsPage() {
       billDate: bill.billDate || '',
       dueDate: bill.dueDate || '',
       paymentStatus: bill.paymentStatus || 'pending',
+      paymentMethod: bill.paymentMethod || 'bank',
       purchaseOrderId: bill.purchaseOrderId || '',
       gstAmount: Number(bill.gstAmount || 0),
       items: bill.items ? [...bill.items] : [],
@@ -321,6 +328,7 @@ export default function PurchaseBillsPage() {
       gstAmount: gst,
       totalAmount: total,
       paymentStatus: formData.paymentStatus,
+      paymentMethod: formData.paymentMethod || 'bank',
       paidAt: formData.paymentStatus === 'paid' ? (editingBill?.paidAt || new Date().toISOString()) : null,
     };
 
@@ -362,6 +370,7 @@ export default function PurchaseBillsPage() {
   };
 
   const handleMarkPaid = async (bill) => {
+    if (!canRecordPayment) return toast.error('Ask the owner or manager to record the supplier payment.');
     if (confirmPaidBillId !== bill.id) {
       setConfirmPaidBillId(bill.id);
       return;
@@ -369,7 +378,7 @@ export default function PurchaseBillsPage() {
     setSaving(true);
     try {
       if (isInventoryOnly && !isDemoMode) {
-        await savePurchaseBillCloud({ ...bill, paymentStatus: 'paid' }, bill);
+        await savePurchaseBillCloud({ ...bill, paymentStatus: 'paid', paymentMethod: supplierPaymentMethod }, bill);
       } else {
         setBills(savePurchaseBill({ ...bill, paymentStatus: 'paid', paidAt: bill.paidAt || new Date().toISOString() }));
       }
@@ -498,7 +507,8 @@ export default function PurchaseBillsPage() {
                   </td>
                   <td style={{ textAlign: 'right' }}>
                     <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '6px' }}>
-                      {b.paymentStatus !== 'paid' && (
+                      {confirmPaidBillId === b.id && isFinanceEnabled && <select aria-label="Supplier payment method" className="input" style={{ width: 110 }} value={supplierPaymentMethod} onChange={(event) => setSupplierPaymentMethod(event.target.value)}><option value="bank">Bank</option><option value="upi">UPI</option><option value="cash">Cash drawer</option></select>}
+                      {b.paymentStatus !== 'paid' && canRecordPayment && (
                         <LoadingButton
                           className="btn btn-secondary btn-sm"
                           style={{ fontSize: '11px', padding: '3px 8px' }}
@@ -606,9 +616,10 @@ export default function PurchaseBillsPage() {
                     onChange={(e) => setFormData({ ...formData, paymentStatus: e.target.value })}
                   >
                     <option value="pending">Pending</option>
-                    <option value="paid">Paid</option>
+                    <option value="paid" disabled={!canRecordPayment}>Paid</option>
                   </select>
                 </div>
+                {isFinanceEnabled && formData.paymentStatus === 'paid' && <div><label className="label">Paid through</label><select className="input" value={formData.paymentMethod || 'bank'} onChange={(event) => setFormData({ ...formData, paymentMethod: event.target.value })}><option value="bank">Bank</option><option value="upi">UPI</option><option value="cash">Cash drawer</option></select></div>}
               </div>
 
               {/* Items Section: Raw Materials and Utensils Inward */}

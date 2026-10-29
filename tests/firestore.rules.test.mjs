@@ -85,7 +85,7 @@ test('staff permissions differ by role', async () => {
   await assertSucceeds(getDoc(doc(inventory, 'raw_materials', 'rice')));
   await assertSucceeds(setDoc(doc(inventory, 'raw_materials', 'flour'), { name: 'Flour' }));
   await assertFails(setDoc(doc(inventory, 'orders', 'order-2'), { total: 10 }));
-  await assertSucceeds(setDoc(doc(cashier, 'orders', 'order-2'), { total: 10 }));
+  await assertFails(setDoc(doc(cashier, 'orders', 'order-2'), { total: 10 }));
   await assertFails(getDoc(doc(cashier, 'raw_materials', 'rice')));
   await assertFails(updateDoc(doc(cashier, 'users', 'owner'), { role: 'Cashier' }));
 });

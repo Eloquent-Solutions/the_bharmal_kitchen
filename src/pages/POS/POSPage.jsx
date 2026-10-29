@@ -51,7 +51,7 @@ import { useAuth } from '../../hooks/useAuth';
 import { startOrderListener, stopOrderListener } from '../../services/realtimeOrderService';
 import { formatCurrency } from '../../utils/formatters';
 import { calculateOrderTotals } from '../../utils/calculations';
-import { isBillingEnabled, isDemoMode, isInventoryOnly, isOperationsEnabled } from '../../firebase/config';
+import { isBillingEnabled, isDemoMode, isInventoryOnly, isOperationsEnabled, isFinanceEnabled } from '../../firebase/config';
 import { PERMISSIONS } from '../../constants/roles';
 import { placePosOrderCloud } from '../../services/billingCloud';
 import { printBillingReceipt } from '../../utils/billingReceipt';
@@ -459,6 +459,7 @@ export default function POSPage() {
     <div className="pos-layout">
       {/* ── Left: Menu Area ── */}
       <div className="pos-main">
+        {isFinanceEnabled && <p style={{ padding: '12px 16px', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)', color: 'var(--text-secondary)' }}>Bills and payments are linked to the open register shift. <Link to="/finance/shifts" style={{ color: 'var(--color-primary)' }}>View register shift</Link></p>}
         {/* Top Control Bar */}
         <div className="pos-top-controls">
           <div className="pos-search-wrapper">

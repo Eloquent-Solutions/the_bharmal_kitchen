@@ -28,6 +28,88 @@ service cloud.firestore {
       return hasRole(['Customer']);
     }
 
+    function financeReader() { return hasRole(['Owner', 'Admin', 'Manager', 'Accountant']); }
+    function financeWriter() { return hasRole(['Owner', 'Admin', 'Manager']); }
+    function financeCollection(name) { return name in ['orders', 'finance_registers', 'finance_entries', 'expenses', 'shifts', 'day_close']; }
+    function openFinanceShift(id) {
+      return getAfter(/databases/$(database)/documents/shifts/$(id)).data.status == 'open';
+    }
+
+    match /finance_registers/{id} {
+      allow read: if financeReader();
+      allow create, update: if financeWriter() && id == 'main'
+        && request.resource.data.revision is number;
+      allow delete: if false;
+    }
+    match /finance_entries/{id} {
+      allow read: if financeReader();
+      allow create: if financeWriter() && request.resource.data.id == id
+        && request.resource.data.createdById == request.auth.uid
+        && request.resource.data.amount is number && request.resource.data.amount > 0
+        && request.resource.data.method in ['cash', 'upi', 'bank']
+        && request.resource.data.direction in ['in', 'out']
+        && request.resource.data.kind in ['sale', 'supplier_payment', 'expense', 'expense_reversal', 'transfer']
+        && openFinanceShift(request.resource.data.shiftId);
+      allow update, delete: if false;
+    }
+    match /expenses/{id} {
+      allow read: if financeReader();
+      allow create: if financeWriter() && request.resource.data.schemaVersion == 2
+        && request.resource.data.id == id && request.resource.data.createdById == request.auth.uid
+        && request.resource.data.amount is number && request.resource.data.amount > 0
+        && request.resource.data.method in ['cash', 'upi', 'bank']
+        && request.resource.data.status == 'posted' && openFinanceShift(request.resource.data.shiftId);
+      allow update: if financeWriter() && resource.data.status == 'posted' && request.resource.data.status == 'void'
+        && request.resource.data.voidedById == request.auth.uid
+        && request.resource.data.voidReason is string && request.resource.data.voidReason.size() > 0
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'voidReason', 'voidedAt', 'voidedById', 'updatedAt'])
+        && openFinanceShift(resource.data.shiftId);
+      allow delete: if false;
+    }
+    match /shifts/{id} {
+      allow read: if financeReader();
+      allow create: if financeWriter() && request.resource.data.id == id
+        && request.resource.data.schemaVersion == 2 && request.resource.data.status == 'open'
+        && request.resource.data.createdById == request.auth.uid
+        && request.resource.data.openingCash is number && request.resource.data.openingCash >= 0
+        && getAfter(/databases/$(database)/documents/finance_registers/main).data.activeShiftId == id;
+      allow update: if financeWriter() && resource.data.status == 'open'
+        && request.resource.data.status in ['open', 'closed']
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['cashSales', 'upiSales', 'cashIn', 'cashOut', 'cashExpenses', 'supplierCash', 'updatedAt', 'status', 'expectedCash', 'actualCash', 'variance', 'note', 'closedAt', 'closedById', 'closedBy']);
+      allow delete: if false;
+    }
+    match /day_close/{id} {
+      allow read: if financeReader();
+      allow create: if financeWriter() && request.resource.data.schemaVersion == 2
+        && request.resource.data.businessDate == id && request.resource.data.createdById == request.auth.uid
+        && getAfter(/databases/$(database)/documents/finance_registers/main).data.lastClosedDate == id
+        && getAfter(/databases/$(database)/documents/finance_registers/main).data.activeShiftId == null;
+      allow update, delete: if false;
+    }
+
+    // Kitchen status updates cannot rewrite prices, tax, costs, or payments.
+    // The current billing release is restricted to Owner/Admin/Manager.
+    match /orders/{id} {
+      allow read: if isStaff();
+      allow get: if isActiveCustomer() && resource.data.customerUid == request.auth.uid;
+      allow create: if financeWriter() && request.resource.data.id == id
+        && request.resource.data.total is number && request.resource.data.total > 0
+        && request.resource.data.paymentStatus in ['pending', 'paid'];
+      allow update: if financeWriter() && resource.data.paymentStatus == 'pending'
+        && request.resource.data.paymentStatus == 'paid' && resource.data.status != 'cancelled'
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['paymentStatus', 'paymentMethod', 'paidAt', 'paymentEntryId', 'paymentBusinessDate', 'paymentShiftId', 'updatedAt']);
+      allow update: if hasRole(['Owner', 'Admin', 'Manager', 'Chef', 'Kitchen Staff'])
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'cookingStartedAt', 'updatedAt'])
+        && ((resource.data.status == 'received' && request.resource.data.status == 'cooking')
+          || (resource.data.status == 'cooking' && request.resource.data.status == 'ready')
+          || (resource.data.status == 'ready' && request.resource.data.status == 'completed')
+          || (resource.data.status == 'received' && request.resource.data.status == 'cancelled'
+            && financeWriter() && resource.data.paymentStatus != 'paid'
+            && (!resource.data.keys().hasAny(['businessDate'])
+              || !exists(/databases/$(database)/documents/day_close/$(resource.data.businessDate)))));
+      allow delete: if false;
+    }
+
     // A first-time sign-in can create only its own Customer profile. Owners
     // assign staff roles through the admin UI or Firebase Console.
     match /users/{userId} {
@@ -79,10 +161,9 @@ service cloud.firestore {
 
     match /{collection}/{document} {
       // Owner and Admin can manage top-level operational documents.
-      allow read, write: if isAdmin();
+      allow read, write: if isAdmin() && !financeCollection(collection);
 
       allow read: if signedIn() && collection in ['menu_items', 'categories'];
-      allow get: if isActiveCustomer() && collection == 'orders' && resource.data.customerUid == request.auth.uid;
 
       allow read: if isStaff() && collection in [
         'menu_items', 'categories', 'combos', 'modifiers', 'promotions',
@@ -96,7 +177,7 @@ service cloud.firestore {
         && collection in ['promotions', 'branches', 'settings', 'printers', 'print_routing']
         && (collection != 'settings' || document != 'restaurant');
       allow write: if hasRole(['Manager', 'Cashier', 'Chef', 'Kitchen Staff', 'Waiter', 'Captain'])
-        && collection in ['orders', 'kots', 'tables'];
+        && collection in ['kots', 'tables'];
       allow write: if hasRole(['Manager', 'Cashier', 'Chef']) && collection == 'print_queue';
 
       allow read: if hasRole(['Manager', 'Chef', 'Kitchen Staff', 'Inventory Manager', 'Accountant'])
@@ -116,12 +197,12 @@ service cloud.firestore {
 
       allow read: if hasRole(['Manager', 'Accountant'])
         && collection in ['staff', 'leaves', 'advances', 'attendance', 'cash_transactions',
-          'cash_drawer', 'expenses', 'day_close', 'shifts', 'audit_logs'];
+          'cash_drawer', 'audit_logs'];
       allow write: if hasRole(['Manager'])
         && collection in ['staff', 'leaves', 'advances', 'attendance', 'cash_transactions',
-          'cash_drawer', 'expenses', 'day_close', 'shifts'];
+          'cash_drawer'];
       allow read, write: if hasRole(['Cashier'])
-        && collection in ['cash_transactions', 'cash_drawer', 'day_close', 'shifts'];
+        && collection in ['cash_transactions', 'cash_drawer'];
       allow create: if isStaff() && collection == 'audit_logs';
     }
   }

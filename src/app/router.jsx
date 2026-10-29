@@ -255,6 +255,7 @@ const routes = [
       { path: '/staff/advances', element: <SuspenseWrap><AdvancesPage /></SuspenseWrap> },
 
       // Finance
+      { path: '/finance', element: <Navigate to="/finance/shifts" replace /> },
       { path: '/finance', element: <Navigate to="/finance/expenses" replace /> },
       { path: '/finance/expenses', element: <SuspenseWrap><ExpensesPage /></SuspenseWrap> },
       { path: '/finance/cash-drawer', element: <SuspenseWrap><CashDrawerPage /></SuspenseWrap> },

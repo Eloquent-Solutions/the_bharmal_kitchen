@@ -1,6 +1,8 @@
 import { collection, doc, getDocs, runTransaction, serverTimestamp } from 'firebase/firestore';
-import { db } from '../firebase/config';
+import { auth, db, isFinanceEnabled } from '../firebase/config';
 import { calculateOrderTotals } from '../utils/calculations';
+import { businessDate, money } from '../utils/finance';
+import { readRegisterContext, writePaymentEntry, writeRegisterMutation } from './financeCloud';
 
 const stock = (value) => Number(value.toFixed(3));
 const stockRequired = (value) => stock(Math.ceil(value * 1000 - 0.0000001) / 1000);
@@ -83,6 +85,16 @@ export async function placePosOrderCloud(input, database = db) {
     }
     const materialRefs = [...requirements.keys()].map((materialId) => doc(database, 'raw_materials', materialId));
     const materialSnapshots = await Promise.all(materialRefs.map((ref) => transaction.get(ref)));
+    const materialById = new Map(materialSnapshots.map((snapshot) => [snapshot.id, snapshot.exists() ? snapshot.data() : {}]));
+    billedItems.forEach((item, index) => {
+      const recipe = recipeSnapshots[index].data();
+      item.costComplete = true;
+      item.ingredientCost = money(recipe.ingredients.reduce((sum, ingredient) => {
+        const rate = Number(materialById.get(ingredient.id)?.unitCost);
+        if (!Number.isFinite(rate) || rate <= 0) item.costComplete = false;
+        return sum + (Number.isFinite(rate) && rate > 0 ? Number(ingredient.qty) * item.quantity / Number(recipe.yieldServings) * rate : 0);
+      }, 0));
+    });
     const settings = settingsSnapshot.exists() ? settingsSnapshot.data() : {};
     const totals = calculateOrderTotals(billedItems, {
       cgstRate: validRate(settings.cgstRate),
@@ -95,6 +107,7 @@ export async function placePosOrderCloud(input, database = db) {
       throw new Error('Bill totals changed. Reload billing and review the amount before saving.');
     }
     const createdAt = new Date().toISOString();
+    const finance = isFinanceEnabled ? await readRegisterContext(transaction, database) : null;
     const order = {
       id, clientRequestId: id, orderType: input.orderType, table: input.orderType === 'dine_in' ? input.table.trim() : null,
       receiptBusiness: {
@@ -107,6 +120,12 @@ export async function placePosOrderCloud(input, database = db) {
       sourceRequestId: input.sourceRequestId || null,
       notes: input.notes?.trim() || null,
       items: billedItems, ...totals, paymentMethod: input.paymentMethod,
+      ingredientCost: money(billedItems.reduce((sum, item) => sum + item.ingredientCost, 0)),
+      costComplete: billedItems.every((item) => item.costComplete),
+      businessDate: finance?.register.businessDate || businessDate(createdAt),
+      shiftId: finance?.shift.id || null,
+      paymentEntryId: input.paymentReceived && finance ? `PAY-${id}` : null,
+      paymentBusinessDate: input.paymentReceived ? (finance?.register.businessDate || businessDate(createdAt)) : null,
       paymentStatus: input.paymentReceived ? 'paid' : 'pending',
       paidAt: input.paymentReceived ? createdAt : null, status: 'received',
       createdAt, createdBy: input.createdBy || 'POS Staff', createdById: input.createdById || null,
@@ -135,11 +154,18 @@ export async function placePosOrderCloud(input, database = db) {
         user: input.createdBy || 'POS Staff', date: createdAt, updatedAt: serverTimestamp(),
       });
     }
+    if (finance) {
+      if (input.paymentReceived) writePaymentEntry(transaction, database, finance, {
+        id: `PAY-${id}`, referenceId: id, method: input.paymentMethod, amount: totals.total,
+        actor: auth?.currentUser || { uid: input.createdById, displayName: input.createdBy },
+      });
+      else writeRegisterMutation(transaction, database, finance);
+    }
     return order;
   });
 }
 
-export async function markPosOrderPaidCloud(orderId, paymentMethod, database = db) {
+export async function markPosOrderPaidCloud(orderId, paymentMethod, database = db, actor = auth?.currentUser) {
   if (!database) throw new Error('Firebase is unavailable.');
   if (!['cash', 'upi'].includes(paymentMethod)) throw new Error('Choose Cash or UPI.');
   const orderRef = doc(database, 'orders', orderId);
@@ -149,6 +175,14 @@ export async function markPosOrderPaidCloud(orderId, paymentMethod, database = d
     const order = snapshot.data();
     if (order.paymentStatus === 'paid') return;
     if (order.status === 'cancelled') throw new Error('Cancelled bills cannot be marked paid.');
-    transaction.update(orderRef, { paymentStatus: 'paid', paymentMethod, paidAt: new Date().toISOString(), updatedAt: serverTimestamp() });
+    const finance = isFinanceEnabled ? await readRegisterContext(transaction, database) : null;
+    const paidAt = new Date().toISOString();
+    transaction.update(orderRef, { paymentStatus: 'paid', paymentMethod, paidAt,
+      paymentEntryId: finance ? `PAY-${orderId}` : null,
+      paymentBusinessDate: finance?.register.businessDate || businessDate(paidAt),
+      paymentShiftId: finance?.shift.id || null, updatedAt: serverTimestamp() });
+    if (finance) writePaymentEntry(transaction, database, finance, {
+      id: `PAY-${orderId}`, referenceId: orderId, method: paymentMethod, amount: order.total, actor,
+    });
   });
 }

@@ -102,3 +102,10 @@ interface Table {
   currentOrderId?: string;
 }
 ```
+### Finance register records
+
+The finance release uses one `finance_registers/main` document containing the active shift ID, business date, last closed date, and revision. Financial transactions read this document and their active `shifts` record together; payment and shift-close races therefore retry or reject rather than losing a receipt.
+
+`shifts` schema version 2 records opening cash, cash/UPI collections, cash transfers, cash expenses, supplier cash payments, physical closing cash, variance, and responsible user. Closed records are immutable. `finance_entries` stores immutable payment/expense/transfer events with deterministic references for bill and supplier payment retries. `expenses` records overhead; an active-shift reversal retains the original plus a reversal entry. `day_close/{YYYY-MM-DD}` stores an immutable summary after register shifts close.
+
+Orders save `businessDate`, `shiftId`, and per-line/total ingredient cost snapshots with completeness flags. Payments save their own `paymentBusinessDate`, `paymentShiftId`, and `paymentEntryId`, so an older bill can be collected on a later day. All business dates use Asia/Kolkata. No historical costs or tax rates are guessed during report generation.

@@ -33,3 +33,20 @@ The imported menu has 22 available dishes but only two linked recipes. Staff can
 The recipe has 15 ingredients and showed ₹67.49 per portion at the development raw material prices. The added costing assumptions are 10 g Red Chilli Sauce for the audio's “red chilli,” 5 g Salt, and 10 g absorbed Cooking Oil. These assumptions are written in the recipe notes for later chef review. It currently shows zero servings ready because Egg has no stock balance; add a verified egg count before using this dish to test billing.
 
 Emulator checks: `npm run test:rules`, `npm run test:billing:cloud`, `npm run test:inventory`, `npm run lint`, and `npm run build`.
+
+## Finance and report review — 28 October 2026
+
+The finance branch adds `VITE_FINANCE_ENABLED=true` alongside the billing flag. Deploy its Firestore rules to the **development** project before review. Production release is a separate step. Owner, Admin, and Manager can record finance transactions; Accountant can read and export. The owner can assign the Finance and Reports tabs in access management.
+
+1. Open Finance → Shifts. Enter the Rajkot business date and the physical opening cash. One shared register shift can be open at a time.
+2. Save a paid cash bill, a paid UPI bill, and an unpaid takeaway bill. Only the cash receipt increases expected drawer cash. Paying an older pickup bill records its receipt in the shift receiving payment, without changing the original bill date or ingredient cost.
+3. Record an operating expense. Cash expenses reduce the drawer automatically; UPI/bank expenses do not. Inventory purchases belong in Purchase Bills. Supplier payments require the actual payment method and reduce the drawer only when paid in cash. Recording payment does not transfer money.
+4. Use Cash Drawer for float top-ups, bank deposits, or owner withdrawals. These transfers are excluded from operating expenses and profit. Legacy cash entries are not automatically assigned to a new register; start with a physical opening count.
+5. Count and close the register shift. A cash difference requires a note. Closed shifts, ledger entries, and saved day closes cannot be edited or deleted through these flows. An expense in the active shift can be reversed with a reason, retaining both records.
+6. Finalize the business day after all shifts close. Explicitly acknowledge unpaid bills that will carry forward. Reprint the saved summary using the browser print dialog. A closed business date cannot be reopened in this release.
+
+The Sales and Orders reports distinguish billed revenue from payment collections. Food Cost and Profit use ingredient price snapshots saved on new bills. Historical bills without those snapshots remain incomplete instead of being costed at today's prices. Profit subtracts recorded ingredient usage, wastage and overhead, and does not subtract inventory purchases a second time. It is an estimate of recorded operating activity, not a complete set of accounts.
+
+Tax reports show stored invoice CGST/SGST amounts, including zero rates. They do not calculate input-credit eligibility or create statutory returns. Older bills with missing tax details are flagged. CSV export escapes spreadsheet formulas. Paid-order cancellation requires a recorded refund workflow, which remains separate review work; it cannot silently discard collected money.
+
+Attendance, employee scheduling, leave, payroll, staff reports, floor plans, reservations, and waitlist stay in the final phase and are absent from the finance release route list.
