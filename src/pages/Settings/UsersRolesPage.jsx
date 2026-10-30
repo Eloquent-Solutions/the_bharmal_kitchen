@@ -112,7 +112,7 @@ export default function UsersRolesPage() {
       if (['Owner', 'Admin', 'Manager'].includes(role)) return [...ALL_TAB_IDS];
       if (role === 'Inventory Manager') return ['inventory', 'purchasing', 'reports'];
       if (role === 'Chef') return ['inventory'];
-      if (role === 'Accountant') return isFinanceEnabled ? ['finance', 'reports'] : ['reports'];
+      if (role === 'Accountant') return isFinanceEnabled ? ['dashboard', 'finance', 'reports'] : ['reports'];
       return [];
     }
     switch (role) {

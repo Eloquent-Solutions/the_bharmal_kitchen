@@ -15,8 +15,12 @@ import { PERMISSIONS, ROLES } from '../constants/roles';
 import Sidebar from '../components/Sidebar/Sidebar';
 import TopBar from '../components/TopBar/TopBar';
 import './AppLayout.css';
+import usePrintWorker from '../hooks/usePrintWorker';
+import useStaffAlerts from '../hooks/useStaffAlerts';
 
 export default function AppLayout() {
+  usePrintWorker();
+  useStaffAlerts();
   const { user, isCustomer, loading, role, hasPermission, isTabAllowed, signOut } = useAuth();
   const location = useLocation();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -101,7 +105,8 @@ export default function AppLayout() {
       : operationsPath
       ? location.pathname.startsWith('/kitchen') ? PERMISSIONS.VIEW_KITCHEN : PERMISSIONS.CREATE_ORDER
       : billingPath
-      ? location.pathname.startsWith('/settings')
+      ? location.pathname.startsWith('/printing') ? PERMISSIONS.MANAGE_PRINTERS
+        : location.pathname.startsWith('/settings')
         ? PERMISSIONS.MANAGE_USERS
         : location.pathname.startsWith('/menu')
         ? PERMISSIONS.MANAGE_MENU

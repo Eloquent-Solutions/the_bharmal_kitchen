@@ -42,14 +42,16 @@ export const BILLING_RELEASE_TABS = new Set([
   'pos', 'orders', 'orders-history',
   'menu', 'menu-items', 'menu-categories',
   'inventory-recipes',
-  'settings-billing',
+  'settings-billing', 'settings-restaurant', 'settings-pos', 'settings-tax', 'settings-notifications', 'settings-audit', 'settings-branches',
+  'printing', 'printing-printers', 'printing-templates', 'printing-routing', 'printing-queue',
 ]);
 export const BILLING_RELEASE_ROLES = new Set([ROLES.OWNER, ROLES.ADMIN, ROLES.MANAGER]);
 export const BILLING_RELEASE_ROUTES = new Set([
   '/pos', '/orders', '/orders/history',
   '/menu', '/menu/items', '/menu/categories',
   '/inventory/recipes',
-  '/settings/billing',
+  '/settings/billing', '/settings/restaurant', '/settings/pos', '/settings/tax', '/settings/notifications', '/settings/audit', '/settings/branches',
+  '/printing', '/printing/printers', '/printing/templates', '/printing/routing', '/printing/queue',
 ]);
 
 export const OPERATIONS_RELEASE_TABS = new Set([
@@ -61,11 +63,11 @@ export const OPERATIONS_RELEASE_ROUTES = new Set([
 
 export const FINANCE_RELEASE_ROLES = new Set([ROLES.OWNER, ROLES.ADMIN, ROLES.MANAGER, ROLES.ACCOUNTANT]);
 export const FINANCE_RELEASE_TABS = new Set([
-  'finance', 'finance-expenses', 'finance-cash-drawer', 'finance-shifts', 'finance-day-close',
+  'dashboard', 'finance', 'finance-expenses', 'finance-cash-drawer', 'finance-shifts', 'finance-day-close',
   'reports-sales', 'reports-orders', 'reports-food-cost', 'reports-profit', 'reports-tax',
 ]);
 export const FINANCE_RELEASE_ROUTES = new Set([
-  '/finance', '/finance/expenses', '/finance/cash-drawer', '/finance/shifts', '/finance/day-close',
+  '/dashboard', '/finance', '/finance/expenses', '/finance/cash-drawer', '/finance/shifts', '/finance/day-close',
   '/reports/sales', '/reports/orders', '/reports/food-cost', '/reports/profit', '/reports/tax',
 ]);
 

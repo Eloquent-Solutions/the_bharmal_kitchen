@@ -81,6 +81,7 @@ export async function initializeFirebaseDataSync(shouldStop = () => false, role 
   // Sync settings documents
   const settingsDocs = [
     { id: 'receipt_template', key: 'tbk_receipt_template' },
+    { id: 'printing', key: 'tbk_printing_settings' },
     { id: 'restaurant', key: 'tbk_restaurant_settings' },
     { id: 'pos', key: 'tbk_pos_settings' },
     { id: 'notifications', key: 'tbk_notification_settings' },
@@ -91,7 +92,7 @@ export async function initializeFirebaseDataSync(shouldStop = () => false, role 
   ];
 
   const unsubscribers = [];
-  for (const s of (isInventoryOnly ? (isBillingEnabled ? settingsDocs.filter(({ id }) => id === 'restaurant' || id === 'channels') : []) : settingsDocs)) {
+  for (const s of (isInventoryOnly ? (isBillingEnabled ? settingsDocs.filter(({ id }) => ['restaurant', 'channels', 'pos', 'notifications', 'receipt_template', 'printing'].includes(id)) : []) : settingsDocs)) {
     if (shouldStop()) return () => unsubscribers.forEach((unsubscribe) => unsubscribe());
     try {
       const snap = await getDoc(doc(db, 'settings', s.id));
@@ -101,12 +102,12 @@ export async function initializeFirebaseDataSync(shouldStop = () => false, role 
         localStorage.setItem(storageKey(s.key), JSON.stringify(val));
         if (s.id === 'restaurant') window.dispatchEvent(new CustomEvent('tbk_restaurant_settings_updated', { detail: val }));
       }
-      if (s.id === 'restaurant') {
+      if (['restaurant', 'pos', 'notifications', 'receipt_template', 'printing'].includes(s.id)) {
         unsubscribers.push(onSnapshot(doc(db, 'settings', s.id), (snapshot) => {
           if (shouldStop() || !snapshot.exists()) return;
           const val = snapshot.data();
           localStorage.setItem(storageKey(s.key), JSON.stringify(val));
-          window.dispatchEvent(new CustomEvent('tbk_restaurant_settings_updated', { detail: val }));
+          window.dispatchEvent(new CustomEvent(s.id === 'restaurant' ? 'tbk_restaurant_settings_updated' : `tbk_${s.id}_settings_updated`, { detail: val }));
         }, (error) => {
           if (!shouldStop() && isInventoryOnly) updateInventorySyncState({ ready: false, error: `Could not synchronize billing settings: ${error.message}` });
         }));
@@ -836,7 +837,7 @@ function getStored(key, defaultVal) {
     console.warn(`Local reading error (${key}):`, e);
   }
   const initialValue = !isDemoMode && Array.isArray(defaultVal) ? [] : defaultVal;
-  if (initialValue !== undefined) localStorage.setItem(storageKey(key), JSON.stringify(initialValue));
+  if (initialValue !== undefined) { try { localStorage?.setItem(storageKey(key), JSON.stringify(initialValue)); } catch { /* Storage can be unavailable in private or server-rendered contexts. */ } }
   return initialValue;
 }
 
@@ -1760,7 +1761,7 @@ export function calculateDishPortionsAvailable(dishId, dishName = '') {
   const recipes = getRecipes();
   const materials = getRawMaterials();
 
-  const recipe = recipes.find(
+  const recipe = recipes.filter((entry) => entry.status !== 'draft').find(
     (r) => r.dishId === dishId || (dishName && r.dishName.toLowerCase() === dishName.toLowerCase())
   );
 
@@ -1799,7 +1800,7 @@ export function assertOrderIngredientsAvailable(orderItems) {
   const requirements = new Map();
 
   for (const item of orderItems) {
-    const recipe = recipes.find(
+    const recipe = recipes.filter((entry) => entry.status !== 'draft').find(
       (r) => r.dishId === item.id || r.dishName.toLowerCase() === (item.name || '').toLowerCase()
     );
 
@@ -1837,7 +1838,7 @@ export function deductIngredientsForOrder(orderItems, orderRefId = 'KOT') {
   const deductedSummary = [];
 
   for (const item of orderItems) {
-    const recipe = recipes.find(
+    const recipe = recipes.filter((entry) => entry.status !== 'draft').find(
       (r) => r.dishId === item.id || r.dishName.toLowerCase() === (item.name || '').toLowerCase()
     );
     if (!recipe?.ingredients) continue;
@@ -2193,7 +2194,7 @@ export function getPOSSettings() {
 
 export function savePOSSettings(settings) {
   setStored('tbk_pos_settings', settings);
-  syncDocToFirestore('settings', 'pos_rules', settings);
+  syncDocToFirestore('settings', 'pos', settings);
   return settings;
 }
 
@@ -3235,11 +3236,15 @@ export function getAuditLogs() {
 
 export function logAuditEvent(event) {
   const list = getAuditLogs();
-  const id = `LOG-${Math.floor(8800 + Math.random() * 1200)}`;
+  const id = `LOG-${crypto.randomUUID()}`;
   const newEntry = {
     id,
+    createdAt: new Date().toISOString(),
     timestamp: new Date().toISOString(),
-    user: event.user || 'System Auto',
+    actorId: auth?.currentUser?.uid || '',
+    actor: auth?.currentUser?.displayName || auth?.currentUser?.email || 'Demo user',
+    target: event.target || event.details || '',
+    user: auth?.currentUser?.displayName || event.user || 'Demo user',
     action: event.action || 'General Event',
     details: event.details || '',
     ip: event.ip || '192.168.1.10 (POS)',
@@ -3260,3 +3265,5 @@ export function clearAuditLogs() {
   } catch (e) { }
   return [];
 }
+
+export function getPrintingSettings() { return getStored('tbk_printing_settings', { enabled: false, printers: [], routes: [] }); }

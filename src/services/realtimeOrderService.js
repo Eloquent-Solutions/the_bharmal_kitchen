@@ -17,12 +17,14 @@ import {
   serverTimestamp,
   Timestamp,
 } from 'firebase/firestore';
+import { getNotificationSettings } from './dataService';
 import { db } from '../firebase/config';
 import { playNotificationTone, showBrowserNotification } from './notificationService';
 
 let ordersUnsubscribe = null;
 let lastKnownOrderIds = new Set();
 let initialized = false;
+let lastKnownStatuses = new Map();
 
 /**
  * Start listening to the orders collection in real-time.
@@ -66,9 +68,9 @@ export function startOrderListener(onOrdersUpdate, options = {}) {
 
           if (newOrderIds.length > 0) {
             // New order arrived
-            if (viewRole === 'chef' && soundEnabled) {
-              playNotificationTone('incoming_order');
-              showBrowserNotification(
+            if (viewRole === 'chef') {
+              if (soundEnabled && getNotificationSettings().soundAlertOnNewOrder !== false) playNotificationTone('incoming_order');
+              if (getNotificationSettings().browserPushNotifications === true) showBrowserNotification(
                 '🔥 New Kitchen Order!',
                 `${newOrderIds.length} new order(s) received`,
                 { tag: 'tbk-new-order' }
@@ -84,11 +86,10 @@ export function startOrderListener(onOrdersUpdate, options = {}) {
               // Notify POS staff when order is ready/cooked
               if (
                 (viewRole === 'pos' || viewRole === 'owner') &&
-                (updatedOrder.status === 'cooked' || updatedOrder.status === 'ready') &&
-                soundEnabled
+                (updatedOrder.status === 'cooked' || updatedOrder.status === 'ready') && lastKnownStatuses.get(updatedOrder.id) !== updatedOrder.status
               ) {
-                playNotificationTone('order_ready');
-                showBrowserNotification(
+                if (soundEnabled && getNotificationSettings().soundAlertOnKOTReady !== false) playNotificationTone('order_ready');
+                if (getNotificationSettings().browserPushNotifications === true) showBrowserNotification(
                   '✅ Order Ready!',
                   `Order #${updatedOrder.orderNumber || updatedOrder.id} is ready for service`,
                   { tag: `tbk-ready-${updatedOrder.id}` }
@@ -99,6 +100,7 @@ export function startOrderListener(onOrdersUpdate, options = {}) {
         }
 
         lastKnownOrderIds = currentIds;
+        lastKnownStatuses = new Map(orders.map((order) => [order.id, order.status]));
         initialized = true;
         onOrdersUpdate(orders);
       },
@@ -122,6 +124,7 @@ export function stopOrderListener() {
   }
   initialized = false;
   lastKnownOrderIds = new Set();
+  lastKnownStatuses = new Map();
 }
 
 /**

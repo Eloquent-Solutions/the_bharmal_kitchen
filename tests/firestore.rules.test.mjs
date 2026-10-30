@@ -96,7 +96,7 @@ test('only the owner can change live restaurant billing settings', async () => {
   await assertSucceeds(setDoc(doc(owner, 'settings', 'restaurant'), { cgstRate: 0, sgstRate: 0 }));
   await assertSucceeds(getDoc(doc(manager, 'settings', 'restaurant')));
   await assertFails(updateDoc(doc(manager, 'settings', 'restaurant'), { cgstRate: 10 }));
-  await assertSucceeds(setDoc(doc(manager, 'settings', 'pos'), { requireTableNumberForDineIn: true }));
+  await assertFails(setDoc(doc(manager, 'settings', 'pos'), { requireTableNumberForDineIn: true }));
 });
 
 test('customer pickup requests cannot create bills or claim payment', async () => {

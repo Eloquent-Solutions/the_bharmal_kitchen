@@ -32,3 +32,7 @@ The historical implementation table below describes screen coverage, not product
 | **Phase 6** | **Staff, CRM & Finances** | Staff roster, Daily shift attendance, Guest CRM with loyalty tiers, Operating expenses & Petty cash ledger, Analytics & Reports. | ✅ Completed |
 | **Phase 7** | **Hardware, Printing & Digital Ordering** | Thermal printer ESC/POS receipt generation, KOT network routing, QR digital ordering menu, and shift day-close workflows. | 🔄 Next |
 | **Phase 8** | **Production Hardening** | PWA offline caching with IndexedDB, multi-branch syncing, performance tuning, and Vercel cloud deployment. | 📋 Planned |
+
+### 30 October 2026 — Development review
+
+Dashboard connected to finance reporting; Wi-Fi/LAN ESC/POS print queue and Windows bridge prepared; receipt rendering and owner settings connected; estimated recipe drafting and acceptance workflow added. See `MODULE_REVIEW.md` for scope and deferred capabilities. Physical printer test deferred until its model and network address are available. No release or Git publication performed as part of this work.

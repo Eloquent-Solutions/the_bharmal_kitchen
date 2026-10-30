@@ -18,11 +18,13 @@ import { formatTime } from '../../utils/formatters';
 import { getKots, updateKotStatus, logAuditEvent } from '../../services/dataService';
 import { isDemoMode } from '../../firebase/config';
 import { updateKotStatusCloud } from '../../services/kitchenCloud';
-import { printKitchenTicket } from '../../utils/kitchenTicket';
+import { printKitchenTicket, sendKitchenTicket } from '../../utils/kitchenTicket';
+import { useAuth } from '../../hooks/useAuth';
 import toast from 'react-hot-toast';
 import LoadingButton from '../../components/LoadingButton';
 
 export default function KOTPage() {
+  const { role } = useAuth();
   const [kots, setKots] = useState([]);
   const [search, setSearch] = useState('');
   const [busyKotId, setBusyKotId] = useState(null);
@@ -158,6 +160,7 @@ export default function KOTPage() {
                         <button className="btn btn-sm btn-secondary" onClick={() => handleReprintKOT(kot)}>
                           <Printer size={13} /> Reprint
                         </button>
+                        {['Owner', 'Admin', 'Manager'].includes(role) && <LoadingButton className="btn btn-secondary btn-sm" disabled={Boolean(busyKotId)} loading={busyKotId === `print-${kot.id}`} onClick={async () => { setBusyKotId(`print-${kot.id}`); try { await sendKitchenTicket(kot); toast.success('Kitchen ticket queued.'); } catch (error) { toast.error(error.message); } finally { setBusyKotId(null); } }}>Send to printer</LoadingButton>}
                       </div>
                     </td>
                   </tr>

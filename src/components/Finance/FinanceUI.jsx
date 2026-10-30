@@ -45,8 +45,8 @@ export function DateFilters({ range, setRange, children }) {
     <div className="finance-actions"><label className="label">From<input type="date" className="input" value={range.from} max={range.to} onChange={(event) => setRange({ ...range, from: event.target.value })} /></label><label className="label">To<input type="date" className="input" value={range.to} min={range.from} onChange={(event) => setRange({ ...range, to: event.target.value })} /></label>{children}</div></div>;
 }
 
-export function FinanceTable({ columns, rows, empty = 'No records for this period', caption }) {
-  return <div className="card finance-table">{rows.length ? <div className="table-container"><table className="table">{caption && <caption className="sr-only">{caption}</caption>}<thead><tr>{columns.map((column) => <th key={column.key} scope="col">{column.label}</th>)}</tr></thead><tbody>{rows.map((row, index) => <tr key={row.id || row.date || index}>{columns.map((column) => <td key={column.key}>{column.render ? column.render(row) : row[column.key] ?? '—'}</td>)}</tr>)}</tbody></table></div> : <EmptyState title={empty} description="Records will appear here when transactions are recorded." />}</div>;
+export function FinanceTable({ columns, rows, empty = 'No records for this period', emptyDescription = 'Records will appear here when transactions are recorded.', caption }) {
+  return <div className="card finance-table">{rows.length ? <div className="table-container"><table className="table">{caption && <caption className="sr-only">{caption}</caption>}<thead><tr>{columns.map((column) => <th key={column.key} scope="col">{column.label}</th>)}</tr></thead><tbody>{rows.map((row, index) => <tr key={row.id || row.date || index}>{columns.map((column) => <td key={column.key}>{column.render ? column.render(row) : row[column.key] ?? '—'}</td>)}</tr>)}</tbody></table></div> : <EmptyState title={empty} description={emptyDescription} />}</div>;
 }
 
 export function CsvButton({ name, rows, disabled }) {

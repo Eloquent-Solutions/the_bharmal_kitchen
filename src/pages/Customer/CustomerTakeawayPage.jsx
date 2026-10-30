@@ -1,3 +1,4 @@
+import useCloudDocument from '../../hooks/useCloudDocument';
 import { useEffect, useMemo, useState } from 'react';
 import { collection, doc, onSnapshot } from 'firebase/firestore';
 import { Link, useSearchParams } from 'react-router-dom';
@@ -18,7 +19,7 @@ const CATEGORY_IMAGES = {
 };
 const DEFAULT_IMAGE = '/images/customer-menu/rice.jpg';
 const CATEGORY_ORDER = ['Starters', 'Indian Gravy', 'Rice', 'Noodles'];
-const PICKUP_ADDRESS = 'Bhagwatipura Main Road, Near Sukhsagar Hall, Rajkot - 360002';
+const DEFAULT_PICKUP_ADDRESS = 'Bhagwatipura Main Road, Near Sukhsagar Hall, Rajkot - 360002';
 
 function dishImage(item) {
   const url = String(item.image || '').trim();
@@ -38,6 +39,10 @@ function RequestStatus({ request, order, loading }) {
 
 export default function CustomerTakeawayPage() {
   const { user, loading, signInWithGoogle, signOut } = useAuth();
+  const profile = useCloudDocument('public_settings', 'restaurant');
+  const pickupAddress = profile.value?.address || DEFAULT_PICKUP_ADDRESS;
+  const pickupClosed = profile.value?.isOpen === false;
+  const restaurantName = profile.value?.name || 'The Bharmals Kitchen';
   const [searchParams, setSearchParams] = useSearchParams();
   const requestId = searchParams.get('request');
   const [menu, setMenu] = useState([]);
@@ -184,7 +189,7 @@ export default function CustomerTakeawayPage() {
   return <div className="takeaway-page">
     <header className="takeaway-topbar">
       <div className="takeaway-topbar-inner">
-        <a className="takeaway-brand" href="#top" aria-label="The Bharmals Kitchen, back to top"><span className="takeaway-brand-mark">TBK</span><span>The Bharmals Kitchen</span></a>
+        <a className="takeaway-brand" href="#top" aria-label={`${restaurantName}, back to top`}><span className="takeaway-brand-mark">TBK</span><span>{restaurantName}</span></a>
         <div className="takeaway-topbar-actions">
           {user && !requestId && <a className="takeaway-nav-link" href="#menu">Explore menu</a>}
           {user && requests.length > 0 && <a className="takeaway-nav-link" href="#my-orders">My requests</a>}
@@ -205,9 +210,9 @@ export default function CustomerTakeawayPage() {
               : user ? <button className="btn btn-primary btn-lg" onClick={() => { setSearchParams({}); setRequest(null); }}>Start a new order <ArrowRight size={18} /></button>
                 : <LoadingButton className="btn btn-primary btn-lg" loading={authBusy} loadingText="Signing in…" onClick={handleGoogleSignIn}>Continue with Google <ArrowRight size={18} /></LoadingButton>}
           </div>
-          <div className="takeaway-hero-facts"><span><Clock3 size={17} /> Freshly prepared</span><span><MapPin size={17} /> Pickup at {PICKUP_ADDRESS}</span></div>
+          <div className="takeaway-hero-facts"><span><Clock3 size={17} /> Freshly prepared</span><span><MapPin size={17} /> Pickup at {pickupAddress}</span>{profile.value?.googleMapUrl && <a href={profile.value.googleMapUrl} target="_blank" rel="noopener noreferrer">Directions</a>}{profile.value?.phone && <a href={`tel:${profile.value.phone.replace(/[^+0-9]/g, '')}`}>Call {profile.value.phone}</a>}</div>
         </div>
-        <div className="takeaway-hero-photo" role="img" aria-label="Illustrative Indian meal"><span>Made with care<br /><strong>at The Bharmals Kitchen</strong></span></div>
+        <div className="takeaway-hero-photo" role="img" aria-label="Illustrative Indian meal"><span>Made with care<br /><strong>at {restaurantName}</strong></span></div>
       </section>
 
       {!user && <section className="takeaway-signin-card" aria-labelledby="takeaway-signin-title">
@@ -251,6 +256,8 @@ export default function CustomerTakeawayPage() {
 
           <aside id="pickup-checkout" className="takeaway-cart" aria-labelledby="takeaway-cart-title">
             <form onSubmit={submit}>
+              {pickupClosed && <p role="status">We are not accepting new pickup requests right now. Please check back later.</p>}
+              {profile.error && <p role="alert">Pickup availability could not load. Please reload before ordering.</p>}
               <div className="takeaway-cart-heading"><span className="takeaway-cart-icon"><ShoppingBag size={20} /></span><div><span className="takeaway-section-kicker">YOUR TAKEAWAY</span><h2 id="takeaway-cart-title">Your order <span>{itemCount}</span></h2></div></div>
               {selected.length ? <ul className="takeaway-cart-items">{selected.map((item) => <li key={item.id}><div><strong>{item.name}</strong><span>{cart[item.id]} × {formatCurrency(item.price)}</span></div><b>{formatCurrency(Number(item.price) * cart[item.id])}</b></li>)}</ul>
                 : <div className="takeaway-cart-empty"><ShoppingBag size={30} /><strong>Your bag is waiting</strong><p>Add a dish to get started.</p></div>}
@@ -259,7 +266,7 @@ export default function CustomerTakeawayPage() {
               <div className="takeaway-cart-fields"><h3>Pickup details</h3><label htmlFor="takeaway-name">Your name</label><input id="takeaway-name" className="input" autoComplete="name" required maxLength="100" value={name} onChange={(event) => setName(event.target.value)} placeholder="Name for your order" />
                 <label htmlFor="takeaway-phone">Phone number</label><input id="takeaway-phone" className="input" required type="tel" inputMode="tel" autoComplete="tel" value={phone} onChange={(event) => setPhone(event.target.value)} placeholder="So we can confirm your order" />
                 <label htmlFor="takeaway-note">Note for the kitchen <span>(optional)</span></label><textarea id="takeaway-note" className="input" rows="2" maxLength="500" value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Any requests?" /></div>
-              <LoadingButton className="btn btn-primary btn-lg takeaway-submit" loading={busy} loadingText="Sending request…" disabled={!selected.length || menuError}>Request pickup <ArrowRight size={18} /></LoadingButton>
+              <LoadingButton className="btn btn-primary btn-lg takeaway-submit" loading={busy} loadingText="Sending request…" disabled={!selected.length || Boolean(menuError) || profile.loading || Boolean(profile.error) || pickupClosed}>Request pickup <ArrowRight size={18} /></LoadingButton>
             </form>
           </aside>
         </div>
@@ -268,6 +275,6 @@ export default function CustomerTakeawayPage() {
       {user && requests.length > 0 && <section id="my-orders" className="takeaway-history" aria-labelledby="takeaway-history-title"><div className="takeaway-section-heading"><div><span className="takeaway-section-kicker">STAY UP TO DATE</span><h2 id="takeaway-history-title">Your pickup requests</h2></div></div><div className="takeaway-history-list">{[...requests].sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt))).slice(0, 10).map((entry) => <button key={entry.id} type="button" onClick={() => { setSearchParams({ request: entry.id }); window.scrollTo({ top: 0, behavior: 'smooth' }); }}><span><strong>{entry.id}</strong><small>{entry.status === 'pending' ? 'Awaiting confirmation' : entry.status === 'accepted' ? 'Confirmed' : 'Unable to accept'}</small></span><ArrowRight size={18} /></button>)}</div></section>}
     </main>
     {user && !requestId && itemCount > 0 && !cartVisible && <a className="takeaway-mobile-cart" href="#pickup-checkout"><span><ShoppingBag size={19} /> {itemCount} {itemCount === 1 ? 'item' : 'items'}</span><strong>{formatCurrency(estimate)}</strong><span>View order <ArrowRight size={16} /></span></a>}
-    <footer className="takeaway-footer">The Bharmals Kitchen · {PICKUP_ADDRESS} <span>·</span> Made fresh for pickup {!user && <><span>·</span><Link to="/login">Team portal</Link></>}</footer>
+    <footer className="takeaway-footer">{restaurantName} · {pickupAddress} <span>·</span> Made fresh for pickup {!user && <><span>·</span><Link to="/login">Team portal</Link></>}</footer>
   </div>;
 }

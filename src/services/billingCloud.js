@@ -1,6 +1,8 @@
 import { collection, doc, getDocs, runTransaction, serverTimestamp } from 'firebase/firestore';
 import { auth, db, isFinanceEnabled } from '../firebase/config';
 import { calculateOrderTotals } from '../utils/calculations';
+import { isValidPickupPhone } from '../utils/phone';
+import { planPrintJobs } from '../utils/printRouting';
 import { businessDate, money } from '../utils/finance';
 import { readRegisterContext, writePaymentEntry, writeRegisterMutation } from './financeCloud';
 
@@ -32,7 +34,7 @@ export async function placePosOrderCloud(input, database = db) {
   const recipeByDish = new Map();
   recipeDocs.forEach((snapshot) => {
     const recipe = snapshot.data();
-    if (recipe.dishId && !recipeByDish.has(recipe.dishId)) recipeByDish.set(recipe.dishId, snapshot.ref);
+    if (recipe.status !== 'draft' && recipe.dishId && !recipeByDish.has(recipe.dishId)) recipeByDish.set(recipe.dishId, snapshot.ref);
   });
   for (const item of items) {
     if (!recipeByDish.has(item.id)) throw new Error(`Add a recipe for this dish before billing: ${item.id}.`);
@@ -54,10 +56,13 @@ export async function placePosOrderCloud(input, database = db) {
       if (existing.data().clientRequestId === id) return { id, ...existing.data() };
       throw new Error('This bill ID is already in use. Reload billing.');
     }
-    const [menuSnapshots, recipeSnapshots, settingsSnapshot] = await Promise.all([
+    const [menuSnapshots, recipeSnapshots, settingsSnapshot, posSnapshot, printingSnapshot, templateSnapshot] = await Promise.all([
       Promise.all(menuRefs.map((ref) => transaction.get(ref))),
       Promise.all(recipeRefs.map((ref) => transaction.get(ref))),
       transaction.get(settingsRef),
+      transaction.get(doc(database, 'settings', 'pos')),
+      transaction.get(doc(database, 'settings', 'printing')),
+      transaction.get(doc(database, 'settings', 'receipt_template')),
     ]);
     const billedItems = items.map((item, index) => {
       if (!menuSnapshots[index].exists()) throw new Error('A dish is no longer available. Reload billing.');
@@ -71,7 +76,7 @@ export async function placePosOrderCloud(input, database = db) {
     for (const [index, snapshot] of recipeSnapshots.entries()) {
       if (!snapshot.exists()) throw new Error('A recipe was removed. Reload billing.');
       const recipe = snapshot.data();
-      if (recipe.dishId !== items[index].id || !Array.isArray(recipe.ingredients) || recipe.ingredients.length === 0) {
+      if (recipe.status === 'draft' || recipe.dishId !== items[index].id || !Array.isArray(recipe.ingredients) || recipe.ingredients.length === 0) {
         throw new Error(`A valid recipe is required for ${billedItems[index].name}.`);
       }
       const yieldServings = Number(recipe.yieldServings);
@@ -96,6 +101,8 @@ export async function placePosOrderCloud(input, database = db) {
       }, 0));
     });
     const settings = settingsSnapshot.exists() ? settingsSnapshot.data() : {};
+    const pos = posSnapshot.data() || {};
+    if (pos.requireCustomerPhone && !isValidPickupPhone(input.phone || '')) throw new Error('A valid customer phone number is required by POS settings.');
     const totals = calculateOrderTotals(billedItems, {
       cgstRate: validRate(settings.cgstRate),
       sgstRate: validRate(settings.sgstRate),
@@ -133,11 +140,15 @@ export async function placePosOrderCloud(input, database = db) {
     };
     transaction.set(orderRef, order);
     if (requestRef) transaction.update(requestRef, { status: 'accepted', orderId: id, updatedAt: serverTimestamp() });
-    transaction.set(doc(database, 'kots', `KOT-${id}`), {
+    const kot = {
       id: `KOT-${id}`, orderId: id, table: order.table || 'Takeaway',
       station: billedItems[0].station || 'Kitchen', items: billedItems.map((item) => `${item.name} (${item.qty})`).join(', '),
       itemsList: billedItems, notes: order.notes, createdAt, status: 'active', updatedAt: serverTimestamp(),
-    });
+    };
+    transaction.set(doc(database, 'kots', `KOT-${id}`), kot);
+    for (const job of planPrintJobs(order, kot, printingSnapshot.data(), pos, templateSnapshot.data())) {
+      transaction.set(doc(database, 'print_queue', job.id), job);
+    }
     for (const [index, materialRef] of materialRefs.entries()) {
       const snapshot = materialSnapshots[index];
       if (!snapshot.exists()) throw new Error('A raw material was removed. Reload billing.');

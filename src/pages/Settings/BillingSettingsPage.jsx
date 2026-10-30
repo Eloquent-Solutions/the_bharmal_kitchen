@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
-import { doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore';
+import { doc, getDoc } from 'firebase/firestore';
 import toast from 'react-hot-toast';
 import { db, isDemoMode } from '../../firebase/config';
 import { cacheRestaurantSettings, getRestaurantSettings } from '../../services/dataService';
+import { saveSettingsCloud } from '../../services/settingsCloud';
 import LoadingButton from '../../components/LoadingButton';
 
 const emptySettings = {
@@ -50,7 +51,7 @@ export default function BillingSettingsPage() {
     };
     setSaving(true);
     try {
-      if (!isDemoMode) await setDoc(doc(db, 'settings', 'restaurant'), { ...next, updatedAt: serverTimestamp() }, { merge: true });
+      if (!isDemoMode) await saveSettingsCloud('restaurant', Object.fromEntries([...textFields.map(([key]) => key), ...rates, 'roundOff'].map((key) => [key, next[key]])));
       cacheRestaurantSettings(next);
       toast.success('Billing settings saved. New bills will use these values.');
     } catch (error) {

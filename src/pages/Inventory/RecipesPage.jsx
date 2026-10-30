@@ -33,6 +33,7 @@ import {
 } from '../../services/dataService';
 import { formatCurrency, formatRecordId } from '../../utils/formatters';
 import toast from 'react-hot-toast';
+import RecipeDraftPanel from '../../components/RecipeDraftPanel';
 
 const ingredientCost = (ingredient, rawMaterials) => {
   const material = rawMaterials.find((item) => item.id === ingredient.id);
@@ -292,6 +293,7 @@ export default function RecipesPage() {
         </button>
       </div>
 
+      <RecipeDraftPanel menu={menuItems} materials={rawMaterials} recipes={recipes} />
       {/* Search Bar */}
       <div className="card" style={{ padding: 'var(--space-3) var(--space-4)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div style={{ position: 'relative', width: '320px' }}>
@@ -336,6 +338,7 @@ export default function RecipesPage() {
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 'var(--space-2)' }}>
                   <div>
                     <h3 style={{ fontSize: 'var(--font-lg)', fontWeight: '700' }}>{recipe.dishName}</h3>
+                    {recipe.status === 'approved-estimate' && <span className="badge badge-warning" title="Staff accepted working estimate. Kitchen quantities and yield are not chef verified.">Accepted estimate</span>}
                     <div style={{ fontSize: 'var(--font-xs)', color: 'var(--text-tertiary)' }}>
                       Yield: {recipe.yieldServings || 1} Portion Servings
                     </div>

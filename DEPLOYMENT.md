@@ -2,7 +2,7 @@
 
 The client release has staff inventory, supplier purchase bills, POS billing, kitchen operations, and Google sign-in pickup requests. Vercel serves the Vite site; Firebase provides Authentication and Firestore. The production Firebase project must be separate from the project used in `.env.local`. Billing flow details and limitations are in [BILLING_REVIEW.md](BILLING_REVIEW.md).
 
-The client view contains raw materials, stock ledger, wastage, stock count, utensils, suppliers, purchase bills, purchase orders, inventory valuation, POS, active orders, KDS/KOT, order history, menu dishes, categories, recipes, and owner user management. POS and menu setup are limited to Owner, Admin, and Manager accounts with assigned tabs. Signed-in customers can submit pickup requests at `/order`; staff validate price, recipe, and stock before confirming a bill. Finance and other unfinished modules remain hidden. These switches set the user-interface scope; Firestore rules enforce data access.
+The client view contains raw materials, stock ledger, wastage, stock count, utensils, suppliers, purchase bills, purchase orders, inventory valuation, POS, active orders, KDS/KOT, order history, menu dishes, categories, recipes, and owner user management. POS and menu setup are limited to Owner, Admin, and Manager accounts with assigned tabs. Signed-in customers can submit pickup requests at `/order`; staff validate price, recipe, and stock before confirming a bill. Finance, operational reports, and the finance-backed dashboard are enabled with `VITE_FINANCE_ENABLED=true`. The reviewed printing, settings, and recipe-draft screens are included in the billing release. Table service and staff HR remain deferred. These switches set the user-interface scope; Firestore rules enforce data access.
 
 ## 1. Create the production Firebase project
 
@@ -28,6 +28,7 @@ In **Project Settings → Environment Variables**, set these for **Production** 
 | `VITE_BILLING_ENABLED` | `true` |
 | `VITE_OPERATIONS_ENABLED` | `true` |
 | `VITE_CUSTOMER_TAKEAWAY_ENABLED` | `true` |
+| `VITE_FINANCE_ENABLED` | `true` |
 | `VITE_FIREBASE_API_KEY` | Production Web app `apiKey` |
 | `VITE_FIREBASE_AUTH_DOMAIN` | Production Web app `authDomain` |
 | `VITE_FIREBASE_PROJECT_ID` | Production Web app `projectId` |
@@ -55,7 +56,7 @@ The app's route guard is only a user-interface control. Firestore rules are the 
 ## 4. Acceptance checks before going live
 
 - Build, lint, and inventory flow tests pass: `npm run build`, `npm run lint`, and `npm run test:inventory`.
-- Owner sign-in reaches `/inventory/materials`; inventory, purchasing, POS (`/pos`), order history (`/orders/history`), menu dishes (`/menu/items`), categories (`/menu/categories`), and recipes (`/inventory/recipes`) load from the production project. A direct visit to `/dashboard` redirects to inventory.
+- Owner sign-in reaches `/inventory/materials`; inventory, purchasing, POS (`/pos`), order history (`/orders/history`), menu dishes (`/menu/items`), categories (`/menu/categories`), and recipes (`/inventory/recipes`) load from the production project. With finance enabled, `/dashboard` shows collections, unpaid bills, and cost-aware profit estimates for financial roles.
 - A staff member receives only the expected role and tabs. A customer or unsigned visitor cannot reach staff pages or read Firestore data.
 - Production has the imported development menu, inventory, recipes, and ledger. The development test order and its stock deduction were excluded; the original production staff profiles and three purchase bills were retained.
 - Inventory and bill changes remain correct across two browsers after refresh. Check stock counts, supplier bills, POS bills, and wastage with disposable test records, including simultaneous adjustments from two staff sessions.
@@ -67,4 +68,11 @@ The released stock actions use Firestore transactions and live listeners. Firest
 
 Keep `main` as the stable client version. Start each other module from `main` on its own branch (for example `codex/recipes-menu` or `codex/finance`); use Vercel Preview and the development Firebase project for those branches. Merge each module after its workflow and permissions are checked. Keep `VITE_INVENTORY_ONLY=true` in Production until the client approves exposing another module.
 
-POS records staff-entered bills and cash or manually confirmed payments. Google customers can request takeaway for pay at pickup. The imported menu has 22 available dishes but only two linked recipes; staff confirmation of any other dish is blocked until its recipe is set up. Recipe readiness and stock should be checked before advertising an item. No payment gateway is connected. Browser printing uses the system print dialog; silent thermal printing and routing are not connected.
+POS records staff-entered bills and cash or manually confirmed payments. Google customers can request takeaway for pay at pickup. The imported menu has 22 available dishes but only two linked recipes; staff confirmation of any other dish is blocked until its recipe is set up. Recipe readiness and stock should be checked before advertising an item. No payment gateway is connected. Browser printing uses the system print dialog. The new Windows Wi-Fi/LAN bridge and print routing support ESC/POS text jobs; the physical printer model, IP address, and paper-output acceptance test remain deferred. See [MODULE_REVIEW.md](MODULE_REVIEW.md) and [print-bridge/README.md](print-bridge/README.md).
+
+
+## Finance/dashboard release prerequisites
+
+Deploy the matching Firestore rules to the explicitly selected production Firebase project before activating the new application. Enable `VITE_FINANCE_ENABLED=true` in Vercel Production before pushing `main`, so the first build includes the dashboard and finance screens. Once finance is enabled, Owner/Admin/Manager staff must open a register shift with the actual counted opening cash before new billing or payment collection. Never invent an opening balance during deployment. Existing unpaid bills remain collectible in an open shift.
+
+Save Restaurant details once to create the sanitized public profile for customer pickup availability. This copies only the saved business name, pickup address, contact phone, Maps link, and availability; it does not copy development stock, bills, users, or recipes. Network printing stays off until the real Windows station and printer routes are configured. Recipe drafts require staff review and explicit acceptance before stock deduction. Existing staff roles and business records are preserved.

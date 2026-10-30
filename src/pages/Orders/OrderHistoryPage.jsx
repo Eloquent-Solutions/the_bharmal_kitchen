@@ -24,7 +24,7 @@ import { getOrders, saveOrder } from '../../services/dataService';
 import { startOrderListener, stopOrderListener } from '../../services/realtimeOrderService';
 import { isBillingEnabled, isDemoMode, isInventoryOnly } from '../../firebase/config';
 import { markPosOrderPaidCloud } from '../../services/billingCloud';
-import { printBillingReceipt } from '../../utils/billingReceipt';
+import { printBillingReceipt, sendBillingReceipt } from '../../utils/billingReceipt';
 import { formatCurrency, formatDateTime } from '../../utils/formatters';
 import toast from 'react-hot-toast';
 import LoadingButton from '../../components/LoadingButton';
@@ -274,6 +274,7 @@ export default function OrderHistoryPage() {
                         >
                           <Printer size={15} />
                         </button>
+                        <LoadingButton className="btn btn-secondary btn-sm" disabled={Boolean(payingOrderId)} loading={payingOrderId === `print-${order.id}`} onClick={async () => { setPayingOrderId(`print-${order.id}`); try { await sendBillingReceipt(order); toast.success('Receipt queued for the network printer.'); } catch (error) { toast.error(error.message); } finally { setPayingOrderId(null); } }}>Send to printer</LoadingButton>
                       </div>
                     </td>
                   </tr>

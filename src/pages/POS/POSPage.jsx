@@ -34,6 +34,7 @@ import {
 import {
   getMenuItems,
   getRecipes,
+  getPOSSettings,
   getCategories,
   getCombos,
   calculateDishPortionsAvailable,
@@ -81,7 +82,7 @@ export default function POSPage() {
   const [customerPhone, setCustomerPhone] = useState('');
   const [deliveryPartner, setDeliveryPartner] = useState('Direct Delivery (Raju)');
   const [selectedCaptain, setSelectedCaptain] = useState('Captain Shabbir');
-  const [paymentMethod, setPaymentMethod] = useState('cash');
+  const [paymentMethod, setPaymentMethod] = useState(() => getPOSSettings().defaultPaymentMethod || 'cash');
   const [paymentReceived, setPaymentReceived] = useState(false);
   const [placingOrder, setPlacingOrder] = useState(false);
   const [lastOrder, setLastOrder] = useState(null);
@@ -164,7 +165,7 @@ export default function POSPage() {
 
   const billablePortions = (item) => {
     const portions = calculateDishPortionsAvailable(item.id, item.name);
-    if (billingRelease && !recipes.some((recipe) => recipe.dishId === item.id && recipe.ingredients?.length > 0)) {
+    if (billingRelease && !recipes.some((recipe) => recipe.status !== 'draft' && recipe.dishId === item.id && recipe.ingredients?.length > 0)) {
       return { ...portions, recipeFound: false };
     }
     return portions;
@@ -383,6 +384,7 @@ export default function POSPage() {
 
   const handlePlaceOrder = async () => {
     if (placingOrder) return;
+    if (getPOSSettings().requireCustomerPhone && !isValidPickupPhone(customerPhone)) { toast.error('Enter a valid customer phone number.'); return; }
     if (cart.length === 0) {
       toast.error('Cart is empty. Please select menu items or combos.');
       return;
@@ -839,7 +841,7 @@ export default function POSPage() {
           </div>
           <div className="pos-summary-line">
             <span>CGST + SGST</span>
-            <span>{formatCurrency(totals.taxAmount)}</span>
+            <span>{formatCurrency(totals.totalTax)}</span>
           </div>
           {totals.serviceCharge > 0 && <div className="pos-summary-line"><span>Service charge</span><span>{formatCurrency(totals.serviceCharge)}</span></div>}
           {totals.roundOffAmount !== 0 && <div className="pos-summary-line"><span>Round off</span><span>{formatCurrency(totals.roundOffAmount)}</span></div>}

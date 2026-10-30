@@ -1,4 +1,4 @@
-import { collection, doc, getDoc, onSnapshot, query, runTransaction, setDoc, where, serverTimestamp } from 'firebase/firestore';
+import { collection, doc, getDoc, onSnapshot, query, runTransaction, where, serverTimestamp } from 'firebase/firestore';
 import { auth, db } from '../firebase/config';
 import { placePosOrderCloud } from './billingCloud';
 import { isValidPickupPhone } from '../utils/phone';
@@ -16,7 +16,11 @@ export async function createTakeawayRequest({ customer, phone, items, notes = ''
     items: cleanItems, notes: notes.trim().slice(0, 500), orderType: 'takeaway', paymentMethod: 'cash',
     paymentStatus: 'pending', status: 'pending', createdAt: new Date().toISOString(),
   };
-  await setDoc(doc(database, 'takeaway_requests', id), request);
+  await runTransaction(database, async (transaction) => {
+    const profile = await transaction.get(doc(database, 'public_settings', 'restaurant'));
+    if (profile.data()?.isOpen === false) throw new Error('Pickup requests are currently paused.');
+    transaction.set(doc(database, 'takeaway_requests', id), request);
+  });
   return request;
 }
 

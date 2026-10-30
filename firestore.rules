@@ -30,9 +30,62 @@ service cloud.firestore {
 
     function financeReader() { return hasRole(['Owner', 'Admin', 'Manager', 'Accountant']); }
     function financeWriter() { return hasRole(['Owner', 'Admin', 'Manager']); }
-    function financeCollection(name) { return name in ['orders', 'finance_registers', 'finance_entries', 'expenses', 'shifts', 'day_close']; }
+    function financeCollection(name) { return name in ['orders', 'finance_registers', 'finance_entries', 'expenses', 'shifts', 'day_close', 'settings', 'public_settings', 'branches', 'audit_logs', 'print_queue', 'recipe_drafts']; }
     function openFinanceShift(id) {
       return getAfter(/databases/$(database)/documents/shifts/$(id)).data.status == 'open';
+    }
+
+    match /settings/{id} {
+      allow read: if isStaff();
+      allow create, update: if isAdmin();
+      allow delete: if false;
+    }
+    match /public_settings/restaurant {
+      allow get: if true;
+      allow create, update: if isAdmin()
+        && request.resource.data.keys().hasOnly(['name', 'address', 'phone', 'googleMapUrl', 'isOpen'])
+        && request.resource.data.isOpen is bool;
+      allow delete: if false;
+    }
+    match /branches/{id} {
+      allow read: if isStaff();
+      allow create, update: if isAdmin();
+      allow delete: if false;
+    }
+    match /audit_logs/{id} {
+      allow read: if financeReader();
+      allow create: if isStaff() && request.resource.data.actorId == request.auth.uid
+        && request.resource.data.id == id && request.resource.data.action is string
+        && request.resource.data.target is string;
+      allow update, delete: if false;
+    }
+    match /recipe_drafts/{id} {
+      allow read: if hasRole(['Owner', 'Admin', 'Manager', 'Chef']);
+      allow create, update: if hasRole(['Owner', 'Admin', 'Manager']);
+      allow delete: if false;
+    }
+    match /print_queue/{id} {
+      allow read: if financeWriter();
+      allow create: if financeWriter() && request.resource.data.id == id
+        && request.resource.data.createdById == request.auth.uid
+        && request.resource.data.status == 'pending'
+        && request.resource.data.kind in ['receipt', 'kot'];
+      function deliveryFieldsOnly() {
+        return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'deviceId', 'claimedById', 'leaseUntil', 'updatedAt', 'error', 'sentTo']);
+      }
+      allow update: if financeWriter() && deliveryFieldsOnly()
+        && resource.data.get('status', '') == 'pending'
+        && request.resource.data.get('status', '') == 'sending'
+        && request.resource.data.get('claimedById', '') == request.auth.uid
+        && request.resource.data.get('deviceId', '') is string
+        && request.resource.data.get('leaseUntil', null) is timestamp;
+      allow update: if financeWriter() && deliveryFieldsOnly()
+        && resource.data.get('status', '') == 'sending'
+        && request.resource.data.get('status', '') in ['sent', 'failed', 'unknown']
+        && (resource.data.get('claimedById', '') == request.auth.uid
+          || (request.resource.data.get('status', '') == 'unknown'
+            && resource.data.get('leaseUntil', request.time) < request.time));
+      allow delete: if false;
     }
 
     match /finance_registers/{id} {
@@ -139,6 +192,8 @@ service cloud.firestore {
       allow list: if hasRole(['Owner', 'Admin', 'Manager']) || (isActiveCustomer() && resource.data.customerUid == request.auth.uid);
       allow create: if isActiveCustomer()
         && request.resource.data.keys().hasOnly(['id', 'customerUid', 'customer', 'phone', 'items', 'notes', 'orderType', 'paymentMethod', 'paymentStatus', 'status', 'createdAt'])
+        && (!exists(/databases/$(database)/documents/public_settings/restaurant)
+          || get(/databases/$(database)/documents/public_settings/restaurant).data.isOpen == true)
         && request.resource.data.id == requestId
         && request.resource.data.customerUid == request.auth.uid
         && request.resource.data.orderType == 'takeaway'
@@ -167,18 +222,17 @@ service cloud.firestore {
 
       allow read: if isStaff() && collection in [
         'menu_items', 'categories', 'combos', 'modifiers', 'promotions',
-        'orders', 'kots', 'tables', 'branches', 'settings',
-        'printers', 'print_routing', 'print_queue'
+        'orders', 'kots', 'tables',
+        'printers', 'print_routing'
       ];
       allow write: if hasRole(['Manager', 'Chef']) && collection in [
         'menu_items', 'categories', 'combos', 'modifiers'
       ];
       allow write: if hasRole(['Manager'])
-        && collection in ['promotions', 'branches', 'settings', 'printers', 'print_routing']
-        && (collection != 'settings' || document != 'restaurant');
+        && collection in ['promotions', 'printers', 'print_routing'];
       allow write: if hasRole(['Manager', 'Cashier', 'Chef', 'Kitchen Staff', 'Waiter', 'Captain'])
         && collection in ['kots', 'tables'];
-      allow write: if hasRole(['Manager', 'Cashier', 'Chef']) && collection == 'print_queue';
+
 
       allow read: if hasRole(['Manager', 'Chef', 'Kitchen Staff', 'Inventory Manager', 'Accountant'])
         && collection in ['raw_materials', 'recipes', 'utensils', 'stock_movements', 'wastage'];
@@ -197,13 +251,13 @@ service cloud.firestore {
 
       allow read: if hasRole(['Manager', 'Accountant'])
         && collection in ['staff', 'leaves', 'advances', 'attendance', 'cash_transactions',
-          'cash_drawer', 'audit_logs'];
+          'cash_drawer'];
       allow write: if hasRole(['Manager'])
         && collection in ['staff', 'leaves', 'advances', 'attendance', 'cash_transactions',
           'cash_drawer'];
       allow read, write: if hasRole(['Cashier'])
         && collection in ['cash_transactions', 'cash_drawer'];
-      allow create: if isStaff() && collection == 'audit_logs';
+
     }
   }
 }
