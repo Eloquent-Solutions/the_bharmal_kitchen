@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import { doc, onSnapshot } from 'firebase/firestore';
-import { db, restaurantRuntime } from '../firebase/config';
+import { db, restaurantRuntime, deploymentEnvironment } from '../firebase/config';
 
 const legacy = { id: null, name: 'The Bharmals Kitchen', mark: 'TBK', status: 'active', mode: 'legacy' };
 const RestaurantContext = createContext(legacy);
@@ -18,7 +18,7 @@ export default function RestaurantProvider({ children }) {
       setState({ loading: false, error: '', restaurant: { id: snapshot.id, name, mark: String(registry.mark || name.split(/\s+/).map((word) => word[0]).join('').slice(0, 3)).toUpperCase(), status: registry.status, mode: 'restaurant' } });
     }, () => setState({ loading: false, restaurant: null, error: 'Restaurant details could not load. Check your connection and try again.' }));
   }, []);
-  useEffect(() => { if (state.restaurant) document.title = state.restaurant.name; }, [state.restaurant]);
+  useEffect(() => { if (state.restaurant) document.title = `${state.restaurant.name}${deploymentEnvironment !== 'production' ? ' · Development' : ''}`; }, [state.restaurant]);
   if (restaurantRuntime.mode === 'legacy') return <RestaurantContext.Provider value={legacy}>{children}</RestaurantContext.Provider>;
   if (restaurantRuntime.mode === 'platform') return <main className="loading-screen"><h1>Eloquent Solutions</h1><p>Restaurant management will be added in the next phase. Open your restaurant’s subdomain to use its workspace.</p></main>;
   if (restaurantRuntime.mode === 'unknown') return <main className="loading-screen"><h1>Restaurant address required</h1><p>Open the restaurant’s assigned subdomain. This address is not configured for a restaurant.</p></main>;

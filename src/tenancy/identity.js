@@ -1,3 +1,5 @@
+import { DEVELOPMENT_FIREBASE_PROJECT, previewHostnames } from './environment.js';
+
 export const RESERVED_RESTAURANT_IDS = new Set(['www', 'admin', 'api', 'app', 'auth', 'platform', 'super-admin', 'restaurants', 'localhost']);
 export function validRestaurantId(value) {
   return typeof value === 'string' && /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(value) && !RESERVED_RESTAURANT_IDS.has(value);
@@ -6,10 +8,14 @@ export function assertRestaurantId(value) {
   if (!validRestaurantId(value)) throw new Error('Invalid restaurant identifier.');
   return value;
 }
-export function resolveRestaurant({ enabled = false, hostname = '', baseDomain = 'eloquentsolutions.in', localRestaurantId = '', development = false } = {}) {
+export function resolveRestaurant({ enabled = false, hostname = '', baseDomain = 'eloquentsolutions.in', localRestaurantId = '', development = false, deploymentEnvironment = 'local', firebaseProjectId = '', previewHosts = [] } = {}) {
   if (!enabled) return Object.freeze({ mode: 'legacy', restaurantId: null, hostname });
   const host = hostname.toLowerCase().replace(/\.$/, '');
   const base = baseDomain.toLowerCase();
+  if (deploymentEnvironment === 'preview' && firebaseProjectId === DEVELOPMENT_FIREBASE_PROJECT
+    && previewHostnames(deploymentEnvironment, previewHosts).includes(host)) {
+    return Object.freeze({ mode: 'restaurant', restaurantId: 'tbk', hostname: host });
+  }
   const local = ['localhost', '127.0.0.1', '[::1]', '::1'].includes(host);
   if (development && local && validRestaurantId(localRestaurantId)) return Object.freeze({ mode: 'restaurant', restaurantId: localRestaurantId, hostname: host });
   if (host === base || host === `www.${base}`) return Object.freeze({ mode: 'platform', restaurantId: null, hostname: host });

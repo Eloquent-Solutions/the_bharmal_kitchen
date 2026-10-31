@@ -1,4 +1,5 @@
 import { resolveRestaurant } from '../tenancy/identity';
+import { DEVELOPMENT_FIREBASE_PROJECT, validateFirebaseTarget } from '../tenancy/environment';
 import { initializeApp, getApp, getApps } from 'firebase/app';
 import { getAuth, GoogleAuthProvider, connectAuthEmulator } from 'firebase/auth';
 import {
@@ -23,13 +24,24 @@ export const isBillingEnabled = import.meta.env.VITE_BILLING_ENABLED === 'true';
 export const isOperationsEnabled = import.meta.env.VITE_OPERATIONS_ENABLED === 'true';
 export const isCustomerTakeawayEnabled = isOperationsEnabled && import.meta.env.VITE_CUSTOMER_TAKEAWAY_ENABLED === 'true';
 export const isFinanceEnabled = isBillingEnabled && import.meta.env.VITE_FINANCE_ENABLED === 'true';
-export const isMultiRestaurant = import.meta.env.VITE_MULTI_RESTAURANT === 'true';
+export const deploymentEnvironment = import.meta.env.VITE_DEPLOYMENT_ENV || 'local';
+const localDevelopmentProject = deploymentEnvironment === 'local' && !isDemoMode && import.meta.env.VITE_FIREBASE_PROJECT_ID === DEVELOPMENT_FIREBASE_PROJECT;
+export const isMultiRestaurant = import.meta.env.VITE_MULTI_RESTAURANT === 'true'
+  || (localDevelopmentProject && import.meta.env.VITE_MULTI_RESTAURANT !== 'false');
+validateFirebaseTarget({
+  environment: deploymentEnvironment, dataMode, projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  multiRestaurant: isMultiRestaurant, platformDomain: import.meta.env.VITE_PLATFORM_DOMAIN || 'eloquentsolutions.in',
+  useEmulators: import.meta.env.VITE_USE_FIREBASE_EMULATORS === 'true',
+});
 export const restaurantRuntime = resolveRestaurant({
   enabled: isMultiRestaurant,
   hostname: typeof window === 'undefined' ? '' : window.location?.hostname || '',
   baseDomain: import.meta.env.VITE_PLATFORM_DOMAIN || 'eloquentsolutions.in',
-  localRestaurantId: import.meta.env.VITE_LOCAL_RESTAURANT_ID || '',
-  development: import.meta.env.DEV,
+  localRestaurantId: import.meta.env.VITE_LOCAL_RESTAURANT_ID || (localDevelopmentProject ? 'tbk' : ''),
+  development: deploymentEnvironment === 'local',
+  deploymentEnvironment, firebaseProjectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  previewHosts: import.meta.env.VITE_PREVIEW_HOSTS || [],
 });
 if (isMultiRestaurant && isDemoMode) throw new Error('Restaurant isolation requires Firebase mode; use the local emulators for testing.');
 

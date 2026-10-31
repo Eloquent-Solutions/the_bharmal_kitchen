@@ -8,18 +8,5 @@
       "source": "/((?!assets/).*)",
       "destination": "/index.html"
     }
-  ],
-  "redirects": [
-    {
-      "source": "/:path*",
-      "has": [
-        {
-          "type": "host",
-          "value": "the-bharmal-kitchen.vercel.app"
-        }
-      ],
-      "destination": "https://tbk.eloquentsolutions.in/:path*",
-      "permanent": false
-    }
   ]
 }

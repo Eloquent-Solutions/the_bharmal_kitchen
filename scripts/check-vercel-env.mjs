@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import { validateFirebaseTarget } from '../src/tenancy/environment.js';
 
 const required = [
   'VITE_FIREBASE_API_KEY',
@@ -10,6 +11,16 @@ const required = [
 ];
 
 const problems = [];
+try {
+  validateFirebaseTarget({
+    environment: process.env.VERCEL_ENV === 'development' ? 'local' : process.env.VERCEL_ENV || 'local', dataMode: process.env.VITE_DATA_MODE,
+    projectId: process.env.VITE_FIREBASE_PROJECT_ID,
+    authDomain: process.env.VITE_FIREBASE_AUTH_DOMAIN,
+    multiRestaurant: process.env.VITE_MULTI_RESTAURANT === 'true',
+    platformDomain: process.env.VITE_PLATFORM_DOMAIN,
+    useEmulators: process.env.VITE_USE_FIREBASE_EMULATORS === 'true',
+  });
+} catch (error) { problems.push(error.message); }
 
 if (process.env.VITE_DATA_MODE !== 'firebase') {
   problems.push('Set VITE_DATA_MODE=firebase.');

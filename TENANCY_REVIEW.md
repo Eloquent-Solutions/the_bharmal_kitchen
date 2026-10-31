@@ -29,7 +29,7 @@ Keep `.env.local` configured for the development Firebase project, then run:
 npm run dev:restaurant
 ```
 
-This command enables restaurant isolation for this development process only, with local restaurant `tbk`. It does not alter production environment variables. Open the URL printed by Vite, then `/admin` for staff. Existing development sign-ins retain their copied roles. Plain `npm run dev` keeps the existing legacy behavior unless the environment explicitly enables isolation.
+This command enables restaurant isolation for this development process only, with local restaurant `tbk`. It does not alter production environment variables. Open the URL printed by Vite, then `/admin` for staff. Existing development sign-ins retain their copied roles. Plain `npm run dev` also enables isolation automatically when `.env.local` selects the known development Firebase project. Both commands use the same `restaurants/tbk` development data. See [DEVELOPMENT_ENVIRONMENTS.md](DEVELOPMENT_ENVIRONMENTS.md) for hosted Preview configuration.
 
 The domain resolver also supports `tbk.localhost` in development. Google sign-in on a new host still requires that host to be authorized in the development Firebase Auth console. Emulator previews use disposable test accounts instead of real Google sign-ins.
 
