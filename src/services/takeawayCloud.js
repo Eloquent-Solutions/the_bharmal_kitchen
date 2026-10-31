@@ -1,4 +1,5 @@
-import { collection, doc, getDoc, onSnapshot, query, runTransaction, where, serverTimestamp } from 'firebase/firestore';
+import { restaurantCollection as collection, restaurantDoc as doc, restaurantTransaction as runTransaction } from '../firebase/restaurantDb';
+import { getDoc, onSnapshot, query, where, serverTimestamp } from 'firebase/firestore';
 import { auth, db } from '../firebase/config';
 import { placePosOrderCloud } from './billingCloud';
 import { isValidPickupPhone } from '../utils/phone';

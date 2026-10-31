@@ -1,3 +1,4 @@
+import { resolveRestaurant } from '../tenancy/identity';
 import { initializeApp, getApp, getApps } from 'firebase/app';
 import { getAuth, GoogleAuthProvider, connectAuthEmulator } from 'firebase/auth';
 import {
@@ -22,6 +23,16 @@ export const isBillingEnabled = import.meta.env.VITE_BILLING_ENABLED === 'true';
 export const isOperationsEnabled = import.meta.env.VITE_OPERATIONS_ENABLED === 'true';
 export const isCustomerTakeawayEnabled = isOperationsEnabled && import.meta.env.VITE_CUSTOMER_TAKEAWAY_ENABLED === 'true';
 export const isFinanceEnabled = isBillingEnabled && import.meta.env.VITE_FINANCE_ENABLED === 'true';
+export const isMultiRestaurant = import.meta.env.VITE_MULTI_RESTAURANT === 'true';
+export const restaurantRuntime = resolveRestaurant({
+  enabled: isMultiRestaurant,
+  hostname: typeof window === 'undefined' ? '' : window.location?.hostname || '',
+  baseDomain: import.meta.env.VITE_PLATFORM_DOMAIN || 'eloquentsolutions.in',
+  localRestaurantId: import.meta.env.VITE_LOCAL_RESTAURANT_ID || '',
+  development: import.meta.env.DEV,
+});
+if (isMultiRestaurant && isDemoMode) throw new Error('Restaurant isolation requires Firebase mode; use the local emulators for testing.');
+
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,

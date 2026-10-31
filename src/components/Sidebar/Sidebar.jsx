@@ -19,6 +19,8 @@ import {
   ChevronDown, ChevronLeft, ChevronRight, X,
 } from 'lucide-react';
 import './Sidebar.css';
+import { staffPath, businessPath } from '../../tenancy/paths';
+import { useRestaurant } from '../../tenancy/RestaurantProvider';
 
 const ICON_MAP = {
   LayoutDashboard, ShoppingCart, ClipboardList, ChefHat,
@@ -29,13 +31,14 @@ const ICON_MAP = {
 export default function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose }) {
   const { hasAnyPermission, isTabAllowed, role } = useAuth();
   const location = useLocation();
+  const restaurant = useRestaurant();
   const [expandedItems, setExpandedItems] = useState({});
 
   const toggleExpand = useCallback((id) => {
     setExpandedItems((prev) => ({ ...prev, [id]: !prev[id] }));
   }, []);
 
-  const isActive = (path) => location.pathname.startsWith(path);
+  const isActive = (path) => businessPath(location.pathname).startsWith(path);
   const billingRoleAllowed = BILLING_RELEASE_ROLES.has(role);
 
   // Filter top-level items by permission & admin-configured allowedTabs
@@ -78,17 +81,17 @@ export default function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose
           {!collapsed && (
             <div className="sidebar-brand">
               <div className="sidebar-logo">
-                <span>TBK</span>
+                <span>{restaurant.mark}</span>
               </div>
               <div className="sidebar-brand-text">
-                <h2>The Bharmals</h2>
-                <span>Kitchen</span>
+                <h2>{restaurant.mode === 'legacy' ? 'The Bharmals' : restaurant.name}</h2>
+                <span>{restaurant.mode === 'legacy' ? 'Kitchen' : 'Restaurant workspace'}</span>
               </div>
             </div>
           )}
           {collapsed && (
             <div className="sidebar-logo sidebar-logo-collapsed">
-              <span>TBK</span>
+              <span>{restaurant.mark}</span>
             </div>
           )}
 
@@ -133,7 +136,7 @@ export default function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose
                   </button>
                 ) : (
                   <NavLink
-                    to={item.path}
+                    to={staffPath(item.path)}
                     className={({ isActive: linkActive }) =>
                       `sidebar-nav-item ${linkActive ? 'active' : ''}`
                     }
@@ -155,7 +158,7 @@ export default function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose
                     {item.children.map((child) => (
                       <NavLink
                         key={child.id}
-                        to={child.path}
+                        to={staffPath(child.path)}
                         className={({ isActive: linkActive }) =>
                           `sidebar-sub-item ${linkActive ? 'active' : ''}`
                         }

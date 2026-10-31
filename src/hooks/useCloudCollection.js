@@ -1,5 +1,6 @@
+import { restaurantCollection as collection } from '../firebase/restaurantDb';
 import { useEffect, useState } from 'react';
-import { collection, onSnapshot, query, orderBy, limit } from 'firebase/firestore';
+import { onSnapshot, query, orderBy, limit } from 'firebase/firestore';
 import { db } from '../firebase/config';
 
 export default function useCloudCollection(name, sortField = '', count = 200) {

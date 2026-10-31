@@ -1,6 +1,8 @@
 # Data Model & Schema Specifications
 ## The Bharmals Kitchen — Firestore Schema Reference
 
+Restaurant isolation adds an opt-in namespace: the collections below live under `restaurants/{restaurantId}`. User profiles become `restaurants/{restaurantId}/members/{firebaseUid}`. Public registry metadata lives at `restaurants/{restaurantId}`; private migration records live below `_migrations`. Legacy builds continue using the original root paths. See [TENANCY_REVIEW.md](TENANCY_REVIEW.md) for the development migration and authorization model.
+
 ### 1. `orders`
 ```typescript
 interface Order {

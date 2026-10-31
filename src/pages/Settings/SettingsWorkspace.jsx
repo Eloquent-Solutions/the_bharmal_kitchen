@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import toast from 'react-hot-toast';
 import useCloudDocument from '../../hooks/useCloudDocument';
 import useCloudCollection from '../../hooks/useCloudCollection';
@@ -7,7 +7,8 @@ import LoadingButton from '../../components/LoadingButton';
 import { CsvButton, FinanceModal, FinanceTable } from '../../components/Finance/FinanceUI';
 import { saveBranchCloud, saveSettingsCloud } from '../../services/settingsCloud';
 import { formatBusinessTime } from '../../utils/finance';
-import { NOTIFICATION_DEFAULTS, POS_DEFAULTS, RESTAURANT_DEFAULTS } from '../../utils/settings';
+import { NOTIFICATION_DEFAULTS, POS_DEFAULTS, RESTAURANT_DEFAULTS, restaurantDefaults } from '../../utils/settings';
+import { useRestaurant } from '../../tenancy/RestaurantProvider';
 
 const config = {
   restaurant: { id: 'restaurant', title: 'Restaurant details', note: 'Contact details appear on the customer page and on new bills. Closing pickup requests stops new customer requests; existing orders remain available to staff.', defaults: RESTAURANT_DEFAULTS, fields: [['name', 'Business name'], ['address', 'Pickup and receipt address'], ['phone', 'Contact phone'], ['email', 'Contact email', 'email'], ['gstin', 'GSTIN'], ['fssai', 'FSSAI number'], ['googleMapUrl', 'Google Maps link', 'url']], switches: [['isOpen', 'Accept new customer pickup requests']] },
@@ -17,10 +18,12 @@ const config = {
 };
 export default function SettingsWorkspace({ screen = 'restaurant' }) {
   const info = config[screen];
+  const restaurant = useRestaurant();
+  const defaults = useMemo(() => info.id === 'restaurant' ? restaurantDefaults(restaurant) : info.defaults, [info, restaurant]);
   const state = useCloudDocument('settings', info.id);
-  const [form, setForm] = useState(info.defaults);
+  const [form, setForm] = useState(defaults);
   const [busy, setBusy] = useState(false);
-  useEffect(() => { if (state.value) setForm({ ...info.defaults, ...state.value }); }, [state.value, info]);
+  useEffect(() => { if (state.value) setForm({ ...defaults, ...state.value }); }, [state.value, defaults]);
   async function save(event) {
     event.preventDefault(); setBusy(true);
     try {

@@ -15,6 +15,8 @@ import { PERMISSIONS, ROLES } from '../constants/roles';
 import Sidebar from '../components/Sidebar/Sidebar';
 import TopBar from '../components/TopBar/TopBar';
 import './AppLayout.css';
+import { businessPath, staffPath } from '../tenancy/paths';
+import { useRestaurant } from '../tenancy/RestaurantProvider';
 import usePrintWorker from '../hooks/usePrintWorker';
 import useStaffAlerts from '../hooks/useStaffAlerts';
 
@@ -23,6 +25,8 @@ export default function AppLayout() {
   useStaffAlerts();
   const { user, isCustomer, loading, role, hasPermission, isTabAllowed, signOut } = useAuth();
   const location = useLocation();
+  const pathname = businessPath(location.pathname);
+  const restaurant = useRestaurant();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [inventorySync, setInventorySync] = useState(getInventorySyncState);
@@ -53,7 +57,7 @@ export default function AppLayout() {
       <div className="loading-screen">
         <div className="spinner" />
         <p style={{ color: 'var(--text-tertiary)', fontSize: 'var(--text-sm)' }}>
-          Loading The Bharmals Kitchen...
+          Loading {restaurant.name}...
         </p>
       </div>
     );
@@ -61,7 +65,7 @@ export default function AppLayout() {
 
   // Redirect to login if not authenticated
   if (!user) {
-    return <Navigate to="/login" replace />;
+    return <Navigate to={staffPath('/login')} replace />;
   }
 
   // Redirect customers to customer order page
@@ -82,42 +86,42 @@ export default function AppLayout() {
             </div>
           </>
         ) : (
-          <><div className="spinner" /><p>Loading The Bharmals Kitchen...</p></>
+          <><div className="spinner" /><p>Loading {restaurant.name}...</p></>
         )}
       </div>
     );
   }
 
   if (isInventoryOnly) {
-    const operationsPath = isOperationsEnabled && OPERATIONS_RELEASE_ROUTES.has(location.pathname);
-    const financePath = isFinanceEnabled && FINANCE_RELEASE_ROUTES.has(location.pathname);
-    if (!INVENTORY_RELEASE_ROUTES.has(location.pathname) && !(isBillingEnabled && BILLING_RELEASE_ROUTES.has(location.pathname)) && !operationsPath && !financePath) {
+    const operationsPath = isOperationsEnabled && OPERATIONS_RELEASE_ROUTES.has(pathname);
+    const financePath = isFinanceEnabled && FINANCE_RELEASE_ROUTES.has(pathname);
+    if (!INVENTORY_RELEASE_ROUTES.has(pathname) && !(isBillingEnabled && BILLING_RELEASE_ROUTES.has(pathname)) && !operationsPath && !financePath) {
       return <Navigate to={INVENTORY_HOME} replace />;
     }
-    const billingPath = isBillingEnabled && BILLING_RELEASE_ROUTES.has(location.pathname) && !operationsPath;
-    const tab = billingPath && (location.pathname === '/pos' || location.pathname.startsWith('/orders'))
-      ? (location.pathname === '/pos' ? 'pos' : location.pathname === '/orders' ? 'orders' : 'orders-history')
-      : operationsPath && location.pathname.startsWith('/kitchen')
-        ? (location.pathname === '/kitchen' ? 'kitchen' : inventoryReleaseTabForPath(location.pathname))
-      : inventoryReleaseTabForPath(location.pathname);
+    const billingPath = isBillingEnabled && BILLING_RELEASE_ROUTES.has(pathname) && !operationsPath;
+    const tab = billingPath && (pathname === '/pos' || pathname.startsWith('/orders'))
+      ? (pathname === '/pos' ? 'pos' : pathname === '/orders' ? 'orders' : 'orders-history')
+      : operationsPath && pathname.startsWith('/kitchen')
+        ? (pathname === '/kitchen' ? 'kitchen' : inventoryReleaseTabForPath(pathname))
+      : inventoryReleaseTabForPath(pathname);
     const requiredPermission = financePath
-      ? location.pathname.startsWith('/reports') ? PERMISSIONS.VIEW_REPORTS : PERMISSIONS.VIEW_FINANCIALS
+      ? pathname.startsWith('/reports') ? PERMISSIONS.VIEW_REPORTS : PERMISSIONS.VIEW_FINANCIALS
       : operationsPath
-      ? location.pathname.startsWith('/kitchen') ? PERMISSIONS.VIEW_KITCHEN : PERMISSIONS.CREATE_ORDER
+      ? pathname.startsWith('/kitchen') ? PERMISSIONS.VIEW_KITCHEN : PERMISSIONS.CREATE_ORDER
       : billingPath
-      ? location.pathname.startsWith('/printing') ? PERMISSIONS.MANAGE_PRINTERS
-        : location.pathname.startsWith('/settings')
+      ? pathname.startsWith('/printing') ? PERMISSIONS.MANAGE_PRINTERS
+        : pathname.startsWith('/settings')
         ? PERMISSIONS.MANAGE_USERS
-        : location.pathname.startsWith('/menu')
+        : pathname.startsWith('/menu')
         ? PERMISSIONS.MANAGE_MENU
-        : location.pathname === '/inventory/recipes'
+        : pathname === '/inventory/recipes'
           ? PERMISSIONS.MANAGE_RECIPE
           : PERMISSIONS.CREATE_ORDER
-      : location.pathname.startsWith('/purchasing')
+      : pathname.startsWith('/purchasing')
       ? PERMISSIONS.MANAGE_PURCHASE
-      : location.pathname.startsWith('/reports')
+      : pathname.startsWith('/reports')
         ? PERMISSIONS.VIEW_REPORTS
-        : location.pathname.startsWith('/settings')
+        : pathname.startsWith('/settings')
           ? PERMISSIONS.MANAGE_USERS
           : PERMISSIONS.MANAGE_INVENTORY;
     const authorized = hasPermission(requiredPermission)
@@ -125,7 +129,7 @@ export default function AppLayout() {
       && (!financePath || FINANCE_RELEASE_ROLES.has(role))
       && (!billingPath || BILLING_RELEASE_ROLES.has(role))
       && (!operationsPath || [ROLES.OWNER, ROLES.ADMIN, ROLES.MANAGER, ROLES.CHEF, ROLES.KITCHEN_STAFF].includes(role))
-      && (!location.pathname.startsWith('/settings') || [ROLES.OWNER, ROLES.ADMIN].includes(role));
+      && (!pathname.startsWith('/settings') || [ROLES.OWNER, ROLES.ADMIN].includes(role));
     if (!authorized) {
       return (
         <div className="loading-screen">

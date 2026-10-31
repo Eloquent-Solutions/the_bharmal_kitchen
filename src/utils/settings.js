@@ -3,6 +3,11 @@ export const RESTAURANT_DEFAULTS = {
   phone: '', email: '', gstin: '', fssai: '', googleMapUrl: '', isOpen: true,
   cgstRate: 0, sgstRate: 0, serviceCharge: 0, roundOff: true,
 };
+export function restaurantDefaults(restaurant) {
+  return restaurant && restaurant.mode !== 'legacy'
+    ? { ...RESTAURANT_DEFAULTS, name: restaurant.name || 'Your restaurant', address: '' }
+    : RESTAURANT_DEFAULTS;
+}
 export const POS_DEFAULTS = { autoPrintKOTOnOrder: false, autoPrintReceipt: false, requireCustomerPhone: false, defaultPaymentMethod: 'cash' };
 export const NOTIFICATION_DEFAULTS = { soundAlertOnNewOrder: true, soundAlertOnKOTReady: true, browserPushNotifications: false, lowStockAlerts: true };
 export function publicRestaurant(settings) {

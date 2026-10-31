@@ -4,10 +4,12 @@ import EmptyState from '../EmptyState';
 import { isFinanceEnabled } from '../../firebase/config';
 import { datePreset, downloadFinanceCsv } from '../../utils/finance';
 import './Finance.css';
+import { useRestaurant } from '../../tenancy/RestaurantProvider';
 
 export function FinanceState({ data, children }) {
+  const restaurant = useRestaurant();
   if (!isFinanceEnabled) return <div className="card"><h2>Finance review is not enabled</h2><p>Enable the finance release flag in the development environment to review these modules.</p></div>;
-  if (data.loading) return <div className="finance-message"><div className="spinner" /><p>Loading The Bharmals Kitchen…</p></div>;
+  if (data.loading) return <div className="finance-message"><div className="spinner" /><p>Loading {restaurant.name}…</p></div>;
   if (data.error) return <div className="card"><h2>Finance data could not load</h2><p>{data.error}</p><button className="btn btn-secondary" onClick={() => window.location.reload()}>Retry</button></div>;
   return children;
 }

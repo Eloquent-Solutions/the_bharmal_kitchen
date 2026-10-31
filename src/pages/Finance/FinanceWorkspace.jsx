@@ -10,6 +10,7 @@ import { formatCurrency } from '../../utils/formatters';
 import { printDayClose } from '../../utils/financePrint';
 import LoadingButton from '../../components/LoadingButton';
 import { FinanceState, Metrics, FinanceModal, DateFilters, FinanceTable, CsvButton } from '../../components/Finance/FinanceUI';
+import { useRestaurant } from '../../tenancy/RestaurantProvider';
 
 const titles = {
   expenses: ['Operating expenses', 'Record overhead payments such as packaging, utilities, and rent.'],
@@ -24,6 +25,7 @@ function Field({ label, children }) {
 }
 
 export default function FinanceWorkspace({ view }) {
+  const restaurant = useRestaurant();
   const data = useFinanceData();
   const { user, role } = useAuth();
   const canWrite = FINANCE_WRITERS.includes(role) && !isDemoMode;
@@ -122,7 +124,7 @@ export default function FinanceWorkspace({ view }) {
     </>}
     {view === 'close' && <>
       <div className="card finance-actions"><Field label="Business date"><input type="date" className="input" value={date} max={businessDate()} onChange={(event) => { setSelectedDate(event.target.value); setAcknowledge(false); }} /></Field>
-        {closed ? <><span className="badge badge-success">Closed by {closed.createdBy}</span><button className="btn btn-secondary" onClick={() => { try { printDayClose(closed); } catch (error) { toast.error(error.message); } }}>Print saved close</button></> : <span className="badge badge-warning">{activeDate === date ? 'Awaiting day close' : 'No open business day on this date'}</span>}</div>
+        {closed ? <><span className="badge badge-success">Closed by {closed.createdBy}</span><button className="btn btn-secondary" onClick={() => { try { printDayClose(closed, restaurant.name); } catch (error) { toast.error(error.message); } }}>Print saved close</button></> : <span className="badge badge-warning">{activeDate === date ? 'Awaiting day close' : 'No open business day on this date'}</span>}</div>
       <Metrics items={[["Billed sales", formatCurrency(closed?.grossSales ?? report.grossSales)], ['Collections', formatCurrency(closed?.collected ?? report.collected), 'Based on payment date'], ['Operating expenses', formatCurrency(closed?.expenses ?? report.expenseTotal)], ['Unpaid bills', formatCurrency(closed?.outstanding ?? report.outstanding)]]} />
       {(closed?.missingTax ?? report.missingTax) > 0 && <p className="finance-note">{closed?.missingTax ?? report.missingTax} historical bills lack a complete tax breakdown.</p>}
       {Boolean(closed?.legacyPayments) && <p className="finance-note">This close includes {closed.legacyPayments} older receipts outside the register ledger. They are included in collections and are not assigned to a new shift’s expected cash.</p>}

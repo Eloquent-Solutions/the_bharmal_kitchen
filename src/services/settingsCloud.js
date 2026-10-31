@@ -1,6 +1,7 @@
-import { doc, runTransaction, serverTimestamp } from 'firebase/firestore';
+import { restaurantDoc as doc, restaurantTransaction as runTransaction, restaurantRegistryDoc } from '../firebase/restaurantDb';
+import { serverTimestamp } from 'firebase/firestore';
 import { auth, db } from '../firebase/config';
-import { publicRestaurant, RESTAURANT_DEFAULTS, validateSettings } from '../utils/settings';
+import { publicRestaurant, restaurantDefaults, validateSettings } from '../utils/settings';
 
 export function auditWrite(transaction, database, actor, action, target) {
   if (!actor?.uid) throw new Error('Sign in before saving changes.');
@@ -13,7 +14,10 @@ export async function saveSettingsCloud(id, input, database = db, actor = auth?.
   return runTransaction(database, async (transaction) => {
     const ref = doc(database, 'settings', id);
     const snapshot = await transaction.get(ref);
-    const next = { ...(id === 'restaurant' ? RESTAURANT_DEFAULTS : {}), ...(snapshot.data() || {}), ...patch };
+    const registryRef = id === 'restaurant' ? restaurantRegistryDoc(database) : null;
+    const registry = registryRef ? (await transaction.get(registryRef)).data() : null;
+    const defaults = restaurantDefaults(registryRef ? { mode: 'restaurant', name: registry?.name } : null);
+    const next = { ...(id === 'restaurant' ? defaults : {}), ...(snapshot.data() || {}), ...patch };
     transaction.set(ref, { ...next, updatedAt: serverTimestamp() });
     if (id === 'restaurant') transaction.set(doc(database, 'public_settings', 'restaurant'), publicRestaurant(next));
     auditWrite(transaction, database, actor, `Updated ${id} settings`, `settings/${id}`);

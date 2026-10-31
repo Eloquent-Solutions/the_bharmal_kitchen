@@ -38,6 +38,12 @@ if (appId && senderId && !appId.startsWith(`1:${senderId}:web:`)) {
 }
 
 if (process.env.VERCEL_ENV === 'production') {
+  if (process.env.VITE_MULTI_RESTAURANT !== 'true') {
+    problems.push('Set VITE_MULTI_RESTAURANT=true for the isolated restaurant production release.');
+  }
+  if (process.env.VITE_PLATFORM_DOMAIN !== 'eloquentsolutions.in') {
+    problems.push('Set VITE_PLATFORM_DOMAIN=eloquentsolutions.in for the configured TBK hostname.');
+  }
   if (process.env.VITE_BILLING_ENABLED !== 'true') {
     problems.push('Set VITE_BILLING_ENABLED=true for the staff billing release.');
   }

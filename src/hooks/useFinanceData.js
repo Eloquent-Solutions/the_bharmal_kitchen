@@ -1,5 +1,6 @@
+import { restaurantCollection as collection, restaurantDoc as doc } from '../firebase/restaurantDb';
 import { useEffect, useState } from 'react';
-import { collection, doc, onSnapshot } from 'firebase/firestore';
+import { onSnapshot } from 'firebase/firestore';
 import { db, isDemoMode, isFinanceEnabled } from '../firebase/config';
 import { useAuth } from './useAuth';
 

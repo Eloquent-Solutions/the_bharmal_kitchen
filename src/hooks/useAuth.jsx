@@ -1,3 +1,4 @@
+import { restaurantDoc as doc } from '../firebase/restaurantDb';
 /**
  * Authentication Context Provider
  * The Bharmals Kitchen — Restaurant Management System
@@ -20,18 +21,12 @@ import {
   sendPasswordResetEmail,
   updateProfile,
 } from 'firebase/auth';
-import {
-  doc,
-  getDoc,
-  setDoc,
-  serverTimestamp,
-  onSnapshot,
-  updateDoc,
-} from 'firebase/firestore';
-import { auth, db, googleProvider, isDemoMode } from '../firebase/config';
+import { getDoc, setDoc, serverTimestamp, onSnapshot, updateDoc } from 'firebase/firestore';
+import { auth, db, googleProvider, isDemoMode, isMultiRestaurant, restaurantRuntime } from '../firebase/config';
 import { initializeFirebaseDataSync } from '../services/dataService';
 import { ROLES, DEFAULT_ROLE_PERMISSIONS } from '../constants/roles';
 import { AUTH_STATE } from '../constants/statuses';
+import { restaurantCacheKey } from '../tenancy/identity';
 import { requestNotificationPermission } from '../services/notificationService';
 
 // Demo Users for testing (only used when Firebase auth fails)
@@ -104,6 +99,7 @@ const initialState = {
 
 // ─── Reducer ───────────────────────────────────────────────
 const AUTH_ACTIONS = {
+  AUTH_START: 'AUTH_START',
   SET_LOADING: 'SET_LOADING',
   AUTH_SUCCESS: 'AUTH_SUCCESS',
   AUTH_FAILURE: 'AUTH_FAILURE',
@@ -116,6 +112,8 @@ const AUTH_ACTIONS = {
 
 function authReducer(state, action) {
   switch (action.type) {
+    case AUTH_ACTIONS.AUTH_START:
+      return { ...initialState, loading: true };
     case AUTH_ACTIONS.SET_LOADING:
       return { ...state, loading: action.payload };
 
@@ -125,7 +123,7 @@ function authReducer(state, action) {
         authState: AUTH_STATE.AUTHENTICATED,
         user: action.payload.user,
         userProfile: action.payload.profile,
-        organizationId: action.payload.profile?.organizationId || 'tbk_org_01',
+        organizationId: restaurantRuntime.restaurantId || action.payload.profile?.organizationId || 'tbk_org_01',
         branchId: action.payload.profile?.branchId || 'BRN-01',
         role: action.payload.profile?.role || ROLES.CUSTOMER,
         permissions: action.payload.permissions || DEFAULT_ROLE_PERMISSIONS[ROLES.CUSTOMER] || [],
@@ -195,12 +193,12 @@ export function AuthProvider({ children }) {
 
   // Restore demo session from localStorage
   useEffect(() => {
-    const savedDemo = isDemoMode ? localStorage.getItem('tbk_demo_user') : null;
+    const savedDemo = isDemoMode ? localStorage.getItem(authCacheKey('tbk_demo_user')) : null;
     if (savedDemo) {
       try {
         const parsed = JSON.parse(savedDemo);
         if (!Object.values(DEMO_USERS).some((user) => user.uid === parsed.uid) && parsed.role !== ROLES.CUSTOMER) {
-          localStorage.removeItem('tbk_demo_user');
+          localStorage.removeItem(authCacheKey('tbk_demo_user'));
           dispatch({ type: AUTH_ACTIONS.SIGN_OUT });
           return;
         }
@@ -216,7 +214,7 @@ export function AuthProvider({ children }) {
         });
         return;
       } catch (e) {
-        localStorage.removeItem('tbk_demo_user');
+        localStorage.removeItem(authCacheKey('tbk_demo_user'));
       }
     }
 
@@ -226,12 +224,18 @@ export function AuthProvider({ children }) {
     }
 
     // Listen to Firebase Auth state changes
+    let generation = 0; let disposed = false;
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      const version = ++generation;
+      const current = () => !disposed && generation === version && auth.currentUser?.uid === firebaseUser?.uid;
+      profileUnsubscribe?.(); profileUnsubscribe = null;
       if (firebaseUser) {
+        dispatch({ type: AUTH_ACTIONS.AUTH_START });
         try {
           prepareLocalCacheForUser(firebaseUser.uid);
           const userDocRef = doc(db, 'users', firebaseUser.uid);
           const userDoc = await getDoc(userDocRef);
+          if (!current()) return;
 
           if (userDoc.exists()) {
             const profile = { id: userDoc.id, ...userDoc.data() };
@@ -265,7 +269,8 @@ export function AuthProvider({ children }) {
               role: ROLES.CUSTOMER,
               status: 'active',
               allowedTabs: [],
-              organizationId: 'tbk_org_01',
+              organizationId: restaurantRuntime.restaurantId || 'tbk_org_01',
+              ...(isMultiRestaurant ? { restaurantId: restaurantRuntime.restaurantId } : {}),
               branchId: 'BRN-01',
               createdAt: serverTimestamp(),
               updatedAt: serverTimestamp(),
@@ -273,6 +278,7 @@ export function AuthProvider({ children }) {
             };
 
             await setDoc(userDocRef, newProfile);
+            if (!current()) return;
             saveUserToLocalList(newProfile);
 
             const permissions = getUserPermissions(newProfile);
@@ -288,6 +294,7 @@ export function AuthProvider({ children }) {
             startProfileListener(firebaseUser.uid, dispatch);
           }
         } catch (err) {
+          if (!current()) return;
           console.warn('Auth profile fetch failed:', err.message);
           await firebaseSignOut(auth).catch(() => {});
           dispatch({ type: AUTH_ACTIONS.AUTH_FAILURE, payload: 'Unable to load your user profile. Please try again.' });
@@ -301,6 +308,7 @@ export function AuthProvider({ children }) {
     });
 
     return () => {
+      disposed = true;
       unsubscribe();
       profileUnsubscribe?.();
       profileUnsubscribe = null;
@@ -312,7 +320,7 @@ export function AuthProvider({ children }) {
     if (!db || !state.user || state.isDemoSession || state.role === ROLES.CUSTOMER) return;
     let cancelled = false;
     let stopSync = () => {};
-    initializeFirebaseDataSync(() => cancelled, state.role).then((unsubscribe) => {
+    initializeFirebaseDataSync(() => cancelled || auth.currentUser?.uid !== state.user.uid, state.role).then((unsubscribe) => {
       if (cancelled) unsubscribe?.();
       else stopSync = unsubscribe || stopSync;
     }).catch((err) => console.warn('Firebase data sync failed:', err));
@@ -335,7 +343,7 @@ export function AuthProvider({ children }) {
 
     try {
       await signInWithEmailAndPassword(auth, email, password);
-      localStorage.removeItem('tbk_demo_user');
+      localStorage.removeItem(authCacheKey('tbk_demo_user'));
     } catch (err) {
       console.warn('Firebase signIn notice:', err.code, err.message);
 
@@ -353,7 +361,7 @@ export function AuthProvider({ children }) {
     if (roleType === 'waiter') selected = DEMO_USERS['waiter@thebharmalskitchen.com'];
     if (roleType === 'customer') selected = DEMO_USERS['customer@thebharmalskitchen.com'];
 
-    localStorage.setItem('tbk_demo_user', JSON.stringify(selected));
+    localStorage.setItem(authCacheKey('tbk_demo_user'), JSON.stringify(selected));
     const permissions = DEFAULT_ROLE_PERMISSIONS[selected.role] || DEFAULT_ROLE_PERMISSIONS[ROLES.OWNER] || [];
     dispatch({
       type: AUTH_ACTIONS.AUTH_SUCCESS,
@@ -397,7 +405,7 @@ export function AuthProvider({ children }) {
     dispatch({ type: AUTH_ACTIONS.CLEAR_ERROR });
     try {
       const result = await signInWithPopup(auth, googleProvider);
-      localStorage.removeItem('tbk_demo_user');
+      localStorage.removeItem(authCacheKey('tbk_demo_user'));
       return result.user;
     } catch (err) {
       console.warn('Google sign-in fallback notice:', err.code, err.message);
@@ -504,16 +512,20 @@ export function AuthProvider({ children }) {
 
 // ─── Helpers ───────────────────────────────────────────────
 
+function authCacheKey(key) {
+  return isMultiRestaurant ? restaurantCacheKey({ projectId: db?.app?.options.projectId, restaurantId: restaurantRuntime.restaurantId, uid: auth?.currentUser?.uid }, key) : key;
+}
 function clearLocalCache() {
+  const prefix = isMultiRestaurant ? restaurantCacheKey({ projectId: db?.app?.options.projectId, restaurantId: restaurantRuntime.restaurantId }, '').split(':anonymous:')[0] + ':' : 'tbk_';
   for (const key of Object.keys(localStorage)) {
-    if (key.startsWith('tbk_')) localStorage.removeItem(key);
+    if (key.startsWith(prefix)) localStorage.removeItem(key);
   }
 }
 
 function prepareLocalCacheForUser(uid) {
-  if (localStorage.getItem('tbk_cache_user_uid') !== uid) {
+  if (localStorage.getItem(authCacheKey('tbk_cache_user_uid')) !== uid) {
     clearLocalCache();
-    localStorage.setItem('tbk_cache_user_uid', uid);
+    localStorage.setItem(authCacheKey('tbk_cache_user_uid'), uid);
   }
 }
 
@@ -524,7 +536,7 @@ function getUserPermissions(profile) {
 
 function saveUserToLocalList(userObj) {
   try {
-    const raw = localStorage.getItem('tbk_users');
+    const raw = localStorage.getItem(authCacheKey('tbk_users'));
     const list = raw ? JSON.parse(raw) : [];
     const idx = list.findIndex(
       (u) =>
@@ -546,7 +558,7 @@ function saveUserToLocalList(userObj) {
     } else {
       list.push(entry);
     }
-    localStorage.setItem('tbk_users', JSON.stringify(list));
+    localStorage.setItem(authCacheKey('tbk_users'), JSON.stringify(list));
   } catch (e) {
     console.warn('saveUserToLocalList error:', e.message);
   }
@@ -561,8 +573,15 @@ function startProfileListener(uid, dispatch) {
     profileUnsubscribe = onSnapshot(
       doc(db, 'users', uid),
       async (docSnap) => {
+        if (auth.currentUser?.uid !== uid) return;
+        if (!docSnap.exists()) {
+          clearLocalCache();
+          await firebaseSignOut(auth).catch(() => {});
+          dispatch({ type: AUTH_ACTIONS.SIGN_OUT });
+          return;
+        }
         if (docSnap.exists()) {
-          const profile = { id: docSnap.id, ...docSnap.data() };
+          const profile = { ...docSnap.data(), id: docSnap.id };
           if (profile.status !== 'active') {
             clearLocalCache();
             await firebaseSignOut(auth).catch(() => {});
@@ -575,8 +594,11 @@ function startProfileListener(uid, dispatch) {
           });
         }
       },
-      (err) => {
-        // quiet fallback
+      () => {
+        if (auth.currentUser?.uid !== uid) return;
+        clearLocalCache();
+        dispatch({ type: AUTH_ACTIONS.AUTH_FAILURE, payload: 'Your restaurant access could not be verified. Please sign in again.' });
+        firebaseSignOut(auth).catch(() => {});
       }
     );
   } catch (e) {

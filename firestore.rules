@@ -2,8 +2,12 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
+    // An IAM-only cutover lock retires legacy clients without deleting history.
+    // Restaurant-scoped rules below do not inherit this legacy guard.
     function signedIn() {
-      return request.auth != null;
+      return request.auth != null
+        && (!exists(/databases/$(database)/documents/platform_migrations/tbk)
+          || get(/databases/$(database)/documents/platform_migrations/tbk).data.state == 'open');
     }
 
     function hasRole(roles) {
@@ -30,7 +34,7 @@ service cloud.firestore {
 
     function financeReader() { return hasRole(['Owner', 'Admin', 'Manager', 'Accountant']); }
     function financeWriter() { return hasRole(['Owner', 'Admin', 'Manager']); }
-    function financeCollection(name) { return name in ['orders', 'finance_registers', 'finance_entries', 'expenses', 'shifts', 'day_close', 'settings', 'public_settings', 'branches', 'audit_logs', 'print_queue', 'recipe_drafts']; }
+    function financeCollection(name) { return name in ['orders', 'finance_registers', 'finance_entries', 'expenses', 'shifts', 'day_close', 'settings', 'public_settings', 'branches', 'audit_logs', 'print_queue', 'recipe_drafts', 'restaurants', 'platform_admins', 'migration_runs', 'platform_migrations']; }
     function openFinanceShift(id) {
       return getAfter(/databases/$(database)/documents/shifts/$(id)).data.status == 'open';
     }
@@ -259,5 +263,265 @@ service cloud.firestore {
         && collection in ['cash_transactions', 'cash_drawer'];
 
     }
+    // Restaurant registry is provisioned by an IAM-authorized migration/backend,
+    // never by a restaurant owner or a self-assigned role in the browser.
+    match /restaurants/{restaurantId} {
+      allow get: if true;
+      allow list, write: if false;
+      function restaurantActive() {
+        return get(/databases/$(database)/documents/restaurants/$(restaurantId)).data.status == 'active';
+      }
+
+    function signedIn() {
+      return request.auth != null && restaurantActive();
+    }
+
+    function hasRole(roles) {
+      return signedIn()
+        && exists(/databases/$(database)/documents/restaurants/$(restaurantId)/members/$(request.auth.uid))
+        && get(/databases/$(database)/documents/restaurants/$(restaurantId)/members/$(request.auth.uid)).data.status == 'active'
+        && get(/databases/$(database)/documents/restaurants/$(restaurantId)/members/$(request.auth.uid)).data.role in roles;
+    }
+
+    function isAdmin() {
+      return hasRole(['Owner', 'Admin']);
+    }
+
+    function isStaff() {
+      return hasRole([
+        'Owner', 'Admin', 'Manager', 'Cashier', 'Chef', 'Kitchen Staff',
+        'Waiter', 'Captain', 'Inventory Manager', 'Accountant', 'Staff'
+      ]);
+    }
+
+    function isActiveCustomer() {
+      return hasRole(['Customer']);
+    }
+
+    function financeReader() { return hasRole(['Owner', 'Admin', 'Manager', 'Accountant']); }
+    function financeWriter() { return hasRole(['Owner', 'Admin', 'Manager']); }
+    function financeCollection(name) { return name in ['orders', 'finance_registers', 'finance_entries', 'expenses', 'shifts', 'day_close', 'settings', 'public_settings', 'branches', 'audit_logs', 'print_queue', 'recipe_drafts']; }
+    function openFinanceShift(id) {
+      return getAfter(/databases/$(database)/documents/restaurants/$(restaurantId)/shifts/$(id)).data.status == 'open';
+    }
+
+    match /settings/{id} {
+      allow read: if isStaff();
+      allow create, update: if isAdmin();
+      allow delete: if false;
+    }
+    match /public_settings/restaurant {
+      allow get: if restaurantActive();
+      allow create, update: if isAdmin()
+        && request.resource.data.keys().hasOnly(['name', 'address', 'phone', 'googleMapUrl', 'isOpen'])
+        && request.resource.data.isOpen is bool;
+      allow delete: if false;
+    }
+    match /branches/{id} {
+      allow read: if isStaff();
+      allow create, update: if isAdmin();
+      allow delete: if false;
+    }
+    match /audit_logs/{id} {
+      allow read: if financeReader();
+      allow create: if isStaff() && request.resource.data.actorId == request.auth.uid
+        && request.resource.data.id == id && request.resource.data.action is string
+        && request.resource.data.target is string;
+      allow update, delete: if false;
+    }
+    match /recipe_drafts/{id} {
+      allow read: if hasRole(['Owner', 'Admin', 'Manager', 'Chef']);
+      allow create, update: if hasRole(['Owner', 'Admin', 'Manager']);
+      allow delete: if false;
+    }
+    match /print_queue/{id} {
+      allow read: if financeWriter();
+      allow create: if financeWriter() && request.resource.data.id == id
+        && request.resource.data.createdById == request.auth.uid
+        && request.resource.data.status == 'pending'
+        && request.resource.data.kind in ['receipt', 'kot'];
+      function deliveryFieldsOnly() {
+        return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'deviceId', 'claimedById', 'leaseUntil', 'updatedAt', 'error', 'sentTo']);
+      }
+      allow update: if financeWriter() && deliveryFieldsOnly()
+        && resource.data.get('status', '') == 'pending'
+        && request.resource.data.get('status', '') == 'sending'
+        && request.resource.data.get('claimedById', '') == request.auth.uid
+        && request.resource.data.get('deviceId', '') is string
+        && request.resource.data.get('leaseUntil', null) is timestamp;
+      allow update: if financeWriter() && deliveryFieldsOnly()
+        && resource.data.get('status', '') == 'sending'
+        && request.resource.data.get('status', '') in ['sent', 'failed', 'unknown']
+        && (resource.data.get('claimedById', '') == request.auth.uid
+          || (request.resource.data.get('status', '') == 'unknown'
+            && resource.data.get('leaseUntil', request.time) < request.time));
+      allow delete: if false;
+    }
+
+    match /finance_registers/{id} {
+      allow read: if financeReader();
+      allow create, update: if financeWriter() && id == 'main'
+        && request.resource.data.revision is number;
+      allow delete: if false;
+    }
+    match /finance_entries/{id} {
+      allow read: if financeReader();
+      allow create: if financeWriter() && request.resource.data.id == id
+        && request.resource.data.createdById == request.auth.uid
+        && request.resource.data.amount is number && request.resource.data.amount > 0
+        && request.resource.data.method in ['cash', 'upi', 'bank']
+        && request.resource.data.direction in ['in', 'out']
+        && request.resource.data.kind in ['sale', 'supplier_payment', 'expense', 'expense_reversal', 'transfer']
+        && openFinanceShift(request.resource.data.shiftId);
+      allow update, delete: if false;
+    }
+    match /expenses/{id} {
+      allow read: if financeReader();
+      allow create: if financeWriter() && request.resource.data.schemaVersion == 2
+        && request.resource.data.id == id && request.resource.data.createdById == request.auth.uid
+        && request.resource.data.amount is number && request.resource.data.amount > 0
+        && request.resource.data.method in ['cash', 'upi', 'bank']
+        && request.resource.data.status == 'posted' && openFinanceShift(request.resource.data.shiftId);
+      allow update: if financeWriter() && resource.data.status == 'posted' && request.resource.data.status == 'void'
+        && request.resource.data.voidedById == request.auth.uid
+        && request.resource.data.voidReason is string && request.resource.data.voidReason.size() > 0
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'voidReason', 'voidedAt', 'voidedById', 'updatedAt'])
+        && openFinanceShift(resource.data.shiftId);
+      allow delete: if false;
+    }
+    match /shifts/{id} {
+      allow read: if financeReader();
+      allow create: if financeWriter() && request.resource.data.id == id
+        && request.resource.data.schemaVersion == 2 && request.resource.data.status == 'open'
+        && request.resource.data.createdById == request.auth.uid
+        && request.resource.data.openingCash is number && request.resource.data.openingCash >= 0
+        && getAfter(/databases/$(database)/documents/restaurants/$(restaurantId)/finance_registers/main).data.activeShiftId == id;
+      allow update: if financeWriter() && resource.data.status == 'open'
+        && request.resource.data.status in ['open', 'closed']
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['cashSales', 'upiSales', 'cashIn', 'cashOut', 'cashExpenses', 'supplierCash', 'updatedAt', 'status', 'expectedCash', 'actualCash', 'variance', 'note', 'closedAt', 'closedById', 'closedBy']);
+      allow delete: if false;
+    }
+    match /day_close/{id} {
+      allow read: if financeReader();
+      allow create: if financeWriter() && request.resource.data.schemaVersion == 2
+        && request.resource.data.businessDate == id && request.resource.data.createdById == request.auth.uid
+        && getAfter(/databases/$(database)/documents/restaurants/$(restaurantId)/finance_registers/main).data.lastClosedDate == id
+        && getAfter(/databases/$(database)/documents/restaurants/$(restaurantId)/finance_registers/main).data.activeShiftId == null;
+      allow update, delete: if false;
+    }
+
+    // Kitchen status updates cannot rewrite prices, tax, costs, or payments.
+    // The current billing release is restricted to Owner/Admin/Manager.
+    match /orders/{id} {
+      allow read: if isStaff();
+      allow get: if isActiveCustomer() && resource.data.customerUid == request.auth.uid;
+      allow create: if financeWriter() && request.resource.data.id == id
+        && request.resource.data.total is number && request.resource.data.total > 0
+        && request.resource.data.paymentStatus in ['pending', 'paid'];
+      allow update: if financeWriter() && resource.data.paymentStatus == 'pending'
+        && request.resource.data.paymentStatus == 'paid' && resource.data.status != 'cancelled'
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['paymentStatus', 'paymentMethod', 'paidAt', 'paymentEntryId', 'paymentBusinessDate', 'paymentShiftId', 'updatedAt']);
+      allow update: if hasRole(['Owner', 'Admin', 'Manager', 'Chef', 'Kitchen Staff'])
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'cookingStartedAt', 'updatedAt'])
+        && ((resource.data.status == 'received' && request.resource.data.status == 'cooking')
+          || (resource.data.status == 'cooking' && request.resource.data.status == 'ready')
+          || (resource.data.status == 'ready' && request.resource.data.status == 'completed')
+          || (resource.data.status == 'received' && request.resource.data.status == 'cancelled'
+            && financeWriter() && resource.data.paymentStatus != 'paid'
+            && (!resource.data.keys().hasAny(['businessDate'])
+              || !exists(/databases/$(database)/documents/restaurants/$(restaurantId)/day_close/$(resource.data.businessDate)))));
+      allow delete: if false;
+    }
+
+    // A first-time sign-in can create only its own Customer profile. Owners
+    // assign staff roles through the admin UI or Firebase Console.
+    match /members/{userId} {
+      allow get: if isAdmin() || (signedIn() && request.auth.uid == userId);
+      allow list: if isAdmin();
+      allow create: if isAdmin() || (
+        signedIn()
+        && request.auth.uid == userId
+        && request.resource.data.uid == userId
+        && request.resource.data.restaurantId == restaurantId
+        && request.resource.data.keys().hasOnly(['uid', 'id', 'name', 'email', 'displayName', 'role', 'status', 'allowedTabs', 'organizationId', 'restaurantId', 'branchId', 'createdAt', 'updatedAt', 'lastLogin'])
+        && request.resource.data.email == request.auth.token.email
+        && request.resource.data.role == 'Customer'
+        && request.resource.data.status == 'active'
+        && request.resource.data.allowedTabs == []
+      );
+      allow update: if isAdmin() || (
+        signedIn()
+        && request.auth.uid == userId
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['lastLogin'])
+      );
+      allow delete: if isAdmin();
+    }
+
+    // Customers submit a pickup request only. Staff reprice and validate each
+    // dish through the POS transaction before creating a bill or kitchen ticket.
+    match /takeaway_requests/{requestId} {
+      allow get: if hasRole(['Owner', 'Admin', 'Manager']) || (isActiveCustomer() && resource.data.customerUid == request.auth.uid);
+      allow list: if hasRole(['Owner', 'Admin', 'Manager']) || (isActiveCustomer() && resource.data.customerUid == request.auth.uid);
+      allow create: if isActiveCustomer()
+        && request.resource.data.keys().hasOnly(['id', 'customerUid', 'customer', 'phone', 'items', 'notes', 'orderType', 'paymentMethod', 'paymentStatus', 'status', 'createdAt'])
+        && (!exists(/databases/$(database)/documents/restaurants/$(restaurantId)/public_settings/restaurant)
+          || get(/databases/$(database)/documents/restaurants/$(restaurantId)/public_settings/restaurant).data.isOpen == true)
+        && request.resource.data.id == requestId
+        && request.resource.data.customerUid == request.auth.uid
+        && request.resource.data.orderType == 'takeaway'
+        && request.resource.data.paymentMethod == 'cash'
+        && request.resource.data.paymentStatus == 'pending'
+        && request.resource.data.status == 'pending'
+        && request.resource.data.customer is string
+        && request.resource.data.customer.size() > 0
+        && request.resource.data.customer.size() <= 100
+        && request.resource.data.phone is string
+        && request.resource.data.phone.size() <= 20
+        && request.resource.data.notes is string
+        && request.resource.data.notes.size() <= 500
+        && request.resource.data.items is list
+        && request.resource.data.items.size() > 0
+        && request.resource.data.items.size() <= 20;
+      allow update: if hasRole(['Owner', 'Admin', 'Manager']);
+      allow delete: if isAdmin();
+    }
+
+    match /{collection}/{document} {
+      // Owner and Admin can manage top-level operational documents.
+      allow read, write: if collection in ['menu_items', 'categories', 'combos', 'modifiers', 'recipes', 'recipe_drafts', 'raw_materials', 'utensils', 'orders', 'tables', 'staff', 'branches', 'members', 'suppliers', 'supply_categories', 'kitchen_stations', 'purchase_bills', 'purchase_orders', 'stock_movements', 'wastage', 'promotions', 'kots', 'printers', 'print_routing', 'print_queue', 'audit_logs', 'customers', 'reservations', 'waitlist', 'leaves', 'advances', 'attendance', 'cash_transactions', 'expenses', 'day_close', 'shifts', 'inbox', 'inbox_messages', 'cash_drawer', 'finance_entries', 'finance_registers', 'settings', 'public_settings'] && !financeCollection(collection) && isAdmin();
+
+      allow read: if collection in ['menu_items', 'categories'] && signedIn();
+
+      allow read: if collection in [
+        'menu_items', 'categories', 'combos', 'modifiers', 'promotions',
+        'orders', 'kots', 'tables',
+        'printers', 'print_routing'
+      ] && isStaff();
+      allow write: if collection in [
+        'menu_items', 'categories', 'combos', 'modifiers'
+      ] && hasRole(['Manager', 'Chef']);
+      allow write: if collection in ['promotions', 'printers', 'print_routing'] && hasRole(['Manager']);
+      allow write: if collection in ['kots', 'tables'] && hasRole(['Manager', 'Cashier', 'Chef', 'Kitchen Staff', 'Waiter', 'Captain']);
+
+
+      allow read: if collection in ['raw_materials', 'recipes', 'utensils', 'stock_movements', 'wastage'] && hasRole(['Manager', 'Chef', 'Kitchen Staff', 'Inventory Manager', 'Accountant']);
+      allow write: if collection in ['raw_materials', 'recipes', 'utensils', 'stock_movements', 'wastage'] && hasRole(['Manager', 'Chef', 'Inventory Manager']);
+      allow create: if collection == 'wastage' && hasRole(['Kitchen Staff']);
+
+      allow read: if collection in ['suppliers', 'supply_categories', 'kitchen_stations', 'purchase_bills', 'purchase_orders'] && hasRole(['Manager', 'Inventory Manager', 'Accountant']);
+      allow read: if collection == 'kitchen_stations' && hasRole(['Chef', 'Kitchen Staff']);
+      allow write: if collection in ['suppliers', 'supply_categories', 'kitchen_stations', 'purchase_bills', 'purchase_orders'] && hasRole(['Manager', 'Inventory Manager']);
+
+      allow read, write: if collection in ['customers', 'reservations', 'waitlist', 'inbox', 'inbox_messages'] && hasRole(['Manager', 'Cashier', 'Waiter', 'Captain']);
+
+      allow read: if collection in ['staff', 'leaves', 'advances', 'attendance', 'cash_transactions',
+          'cash_drawer'] && hasRole(['Manager', 'Accountant']);
+      allow write: if collection in ['staff', 'leaves', 'advances', 'attendance', 'cash_transactions',
+          'cash_drawer'] && hasRole(['Manager']);
+      allow read, write: if collection in ['cash_transactions', 'cash_drawer'] && hasRole(['Cashier']);
+
+    }
+    }
+
   }
 }

@@ -1,3 +1,4 @@
+import { useRestaurant } from '../../tenancy/RestaurantProvider';
 /**
  * Login Page
  * The Bharmals Kitchen — Restaurant Management System
@@ -22,6 +23,7 @@ import {
 } from 'lucide-react';
 
 export default function LoginPage() {
+  const restaurant = useRestaurant();
   const { signIn, signInWithGoogle, loginDemo, error, clearError, loading } = useAuth();
   const navigate = useNavigate();
 
@@ -83,7 +85,7 @@ export default function LoginPage() {
   return (
     <>
       <h2>Welcome Back</h2>
-      {!isStaffOnly && <p className="auth-card-subtitle">{isDemoMode ? 'Explore the app locally with a demo role' : 'Sign in to The Bharmals Kitchen portal'}</p>}
+      {!isStaffOnly && <p className="auth-card-subtitle">{isDemoMode ? 'Explore the app locally with a demo role' : `Sign in to ${restaurant.name} portal`}</p>}
 
       {/* Google Sign-In Button */}
       {!isDemoMode && <>

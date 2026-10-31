@@ -1,4 +1,5 @@
-import { collection, doc, getDocFromServer, getDocsFromServer, runTransaction, serverTimestamp } from 'firebase/firestore';
+import { restaurantCollection as collection, restaurantDoc as doc, restaurantTransaction as runTransaction } from '../firebase/restaurantDb';
+import { getDocFromServer, getDocsFromServer, serverTimestamp } from 'firebase/firestore';
 import { auth, db } from '../firebase/config';
 import { businessDate, validBusinessDate, expectedShiftCash, buildFinanceReport, money } from '../utils/finance';
 

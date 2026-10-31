@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import './TopBar.css';
+import { staffPath, businessPath } from '../../tenancy/paths';
 
 export default function TopBar({ onMobileMenuToggle }) {
   const { user, userProfile, role, signOut } = useAuth();
@@ -66,11 +67,11 @@ export default function TopBar({ onMobileMenuToggle }) {
     setProfileOpen(false);
     await signOut();
     toast.success('Signed out successfully');
-    navigate('/login', { replace: true });
+    navigate(staffPath('/login'), { replace: true });
   }, [signOut, navigate]);
 
   // Build breadcrumbs from path
-  const breadcrumbs = buildBreadcrumbs(location.pathname);
+  const breadcrumbs = buildBreadcrumbs(businessPath(location.pathname));
 
   const displayName = userProfile?.displayName || user?.displayName || user?.email || 'User';
   const initials = getInitials(displayName);
@@ -95,7 +96,7 @@ export default function TopBar({ onMobileMenuToggle }) {
               {i < breadcrumbs.length - 1 ? (
                 <button
                   className="breadcrumb-link"
-                  onClick={() => navigate(crumb.path)}
+                  onClick={() => navigate(staffPath(crumb.path))}
                 >
                   {crumb.label}
                 </button>

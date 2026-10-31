@@ -23,6 +23,8 @@ npm run preview
 
 ## Optional Firebase mode
 
+Restaurant isolation and the separate `/admin` workspace are available for development review with `npm run dev:restaurant`. See [TENANCY_REVIEW.md](TENANCY_REVIEW.md) for the copied TBK data, scope, checks and remaining domain rollout steps. The authorized custom-domain production cutover is described in [TENANCY_PRODUCTION.md](TENANCY_PRODUCTION.md).
+
 Copy `.env.example` to `.env.local`, set `VITE_DATA_MODE=firebase`, and supply the Firebase web app config. In this mode, sign-in uses Firebase Authentication and Firestore operations use the configured project. Google sign-in and account creation require the corresponding Firebase providers and Firestore rules. Set `VITE_USE_FIREBASE_EMULATORS=true` only when the Auth, Firestore, and Storage emulators are running on ports 9099, 8080, and 9199.
 
 Firebase mode is separate from the local demo. It does not silently sign users into a demo account after an authentication error. Existing Firestore data is read after sign-in; demo records are not automatically uploaded to an empty cloud project. Cloud behavior and production readiness still need end-to-end verification before real restaurant use.

@@ -1,6 +1,9 @@
+import { staffPath } from '../../tenancy/paths';
+import { restaurantCollection as collection, restaurantDoc as doc } from '../../firebase/restaurantDb';
+import { useRestaurant } from '../../tenancy/RestaurantProvider';
 import useCloudDocument from '../../hooks/useCloudDocument';
 import { useEffect, useMemo, useState } from 'react';
-import { collection, doc, onSnapshot } from 'firebase/firestore';
+import { onSnapshot } from 'firebase/firestore';
 import { Link, useSearchParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { ArrowRight, Check, Clock3, MapPin, Minus, Plus, Search, ShoppingBag, X } from 'lucide-react';
@@ -39,10 +42,11 @@ function RequestStatus({ request, order, loading }) {
 
 export default function CustomerTakeawayPage() {
   const { user, loading, signInWithGoogle, signOut } = useAuth();
+  const restaurant = useRestaurant();
   const profile = useCloudDocument('public_settings', 'restaurant');
-  const pickupAddress = profile.value?.address || DEFAULT_PICKUP_ADDRESS;
+  const pickupAddress = profile.value?.address || (restaurant.mode === 'legacy' ? DEFAULT_PICKUP_ADDRESS : 'Pickup details will be confirmed by the restaurant');
   const pickupClosed = profile.value?.isOpen === false;
-  const restaurantName = profile.value?.name || 'The Bharmals Kitchen';
+  const restaurantName = profile.value?.name || restaurant.name;
   const [searchParams, setSearchParams] = useSearchParams();
   const requestId = searchParams.get('request');
   const [menu, setMenu] = useState([]);
@@ -185,11 +189,11 @@ export default function CustomerTakeawayPage() {
     finally { setAuthBusy(false); }
   }
 
-  if (loading) return <div className="loading-screen"><div className="spinner" /><p>Loading The Bharmals Kitchen...</p></div>;
+  if (loading) return <div className="loading-screen"><div className="spinner" /><p>Loading {restaurantName}...</p></div>;
   return <div className="takeaway-page">
     <header className="takeaway-topbar">
       <div className="takeaway-topbar-inner">
-        <a className="takeaway-brand" href="#top" aria-label={`${restaurantName}, back to top`}><span className="takeaway-brand-mark">TBK</span><span>{restaurantName}</span></a>
+        <a className="takeaway-brand" href="#top" aria-label={`${restaurantName}, back to top`}><span className="takeaway-brand-mark">{restaurant.mark}</span><span>{restaurantName}</span></a>
         <div className="takeaway-topbar-actions">
           {user && !requestId && <a className="takeaway-nav-link" href="#menu">Explore menu</a>}
           {user && requests.length > 0 && <a className="takeaway-nav-link" href="#my-orders">My requests</a>}
@@ -244,7 +248,7 @@ export default function CustomerTakeawayPage() {
             {!menuLoading && !menuError && visibleMenu.map((item) => {
               const qty = cart[item.id] || 0;
               return <article className="takeaway-dish-card" key={item.id}>
-                <div className="takeaway-dish-photo"><span className="takeaway-photo-fallback" aria-hidden="true">TBK</span><img src={dishImage(item)} alt={item.image ? item.name : 'Illustrative ' + (item.category || 'restaurant') + ' dish'} loading="lazy" onError={(event) => { event.currentTarget.hidden = true; }} /><span className="takeaway-dish-category">{item.category || 'Menu'}</span></div>
+                <div className="takeaway-dish-photo"><span className="takeaway-photo-fallback" aria-hidden="true">{restaurant.mark}</span><img src={dishImage(item)} alt={item.image ? item.name : 'Illustrative ' + (item.category || 'restaurant') + ' dish'} loading="lazy" onError={(event) => { event.currentTarget.hidden = true; }} /><span className="takeaway-dish-category">{item.category || 'Menu'}</span></div>
                 <div className="takeaway-dish-content"><div className="takeaway-dish-title-row"><h3>{item.name}</h3>{item.type && <span className={'takeaway-food-type ' + (item.type === 'veg' ? 'is-veg' : 'is-nonveg')} title={item.type === 'veg' ? 'Vegetarian' : 'Non vegetarian'} aria-label={item.type === 'veg' ? 'Vegetarian' : 'Non vegetarian'}><span /></span>}</div>
                   {item.description && <p>{item.description}</p>}
                   <div className="takeaway-dish-bottom"><strong>{formatCurrency(item.price)}</strong>{qty ? <div className="takeaway-quantity"><button type="button" aria-label={'Remove one ' + item.name} onClick={() => changeQty(item.id, -1)}><Minus size={16} /></button><span aria-label={qty + ' selected'}>{qty}</span><button type="button" aria-label={'Add one ' + item.name} disabled={qty >= 20} onClick={() => changeQty(item.id, 1)}><Plus size={16} /></button></div>
@@ -275,6 +279,6 @@ export default function CustomerTakeawayPage() {
       {user && requests.length > 0 && <section id="my-orders" className="takeaway-history" aria-labelledby="takeaway-history-title"><div className="takeaway-section-heading"><div><span className="takeaway-section-kicker">STAY UP TO DATE</span><h2 id="takeaway-history-title">Your pickup requests</h2></div></div><div className="takeaway-history-list">{[...requests].sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt))).slice(0, 10).map((entry) => <button key={entry.id} type="button" onClick={() => { setSearchParams({ request: entry.id }); window.scrollTo({ top: 0, behavior: 'smooth' }); }}><span><strong>{entry.id}</strong><small>{entry.status === 'pending' ? 'Awaiting confirmation' : entry.status === 'accepted' ? 'Confirmed' : 'Unable to accept'}</small></span><ArrowRight size={18} /></button>)}</div></section>}
     </main>
     {user && !requestId && itemCount > 0 && !cartVisible && <a className="takeaway-mobile-cart" href="#pickup-checkout"><span><ShoppingBag size={19} /> {itemCount} {itemCount === 1 ? 'item' : 'items'}</span><strong>{formatCurrency(estimate)}</strong><span>View order <ArrowRight size={16} /></span></a>}
-    <footer className="takeaway-footer">{restaurantName} · {pickupAddress} <span>·</span> Made fresh for pickup {!user && <><span>·</span><Link to="/login">Team portal</Link></>}</footer>
+    <footer className="takeaway-footer">{restaurantName} · {pickupAddress} <span>·</span> Made fresh for pickup {!user && <><span>·</span><Link to={staffPath('/login')}>Team portal</Link></>}</footer>
   </div>;
 }

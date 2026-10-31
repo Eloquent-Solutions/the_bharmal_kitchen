@@ -1,3 +1,4 @@
+import { restaurantCollection as collection, restaurantDoc as doc } from '../firebase/restaurantDb';
 /**
  * Real-Time Order Listener Service
  * The Bharmals Kitchen — Restaurant Management System
@@ -6,17 +7,7 @@
  * Chef gets live incoming orders. POS staff gets status change notifications.
  */
 
-import {
-  collection,
-  onSnapshot,
-  query,
-  where,
-  orderBy,
-  doc,
-  updateDoc,
-  serverTimestamp,
-  Timestamp,
-} from 'firebase/firestore';
+import { onSnapshot, query, where, orderBy, updateDoc, serverTimestamp, Timestamp } from 'firebase/firestore';
 import { getNotificationSettings } from './dataService';
 import { db } from '../firebase/config';
 import { playNotificationTone, showBrowserNotification } from './notificationService';

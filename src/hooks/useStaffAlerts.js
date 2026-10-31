@@ -1,5 +1,6 @@
+import { restaurantCollection as collection } from '../firebase/restaurantDb';
 import { useEffect } from 'react';
-import { collection, onSnapshot, query, where } from 'firebase/firestore';
+import { onSnapshot, query, where } from 'firebase/firestore';
 import toast from 'react-hot-toast';
 import { db, isOperationsEnabled } from '../firebase/config';
 import { useAuth } from './useAuth';

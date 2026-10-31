@@ -26,7 +26,7 @@ export async function createBridge(config, { statePath, deliver = sendTcp } = {}
   let serial = Promise.resolve();
   const allowed = (printer) => config.targets.some((target) => target.ipAddress === printer?.ipAddress && Number(target.port || 9100) === Number(printer.port));
   const perform = async (job) => {
-    if (!/^[\w-]{1,240}$/.test(job.id || '') || !allowed(job.printer) || (job.backup && !allowed(job.backup))) throw new Error('Job or printer is not allowed in this bridge configuration.');
+    if (!/^[\w-]{1,320}$/.test(job.id || '') || !allowed(job.printer) || (job.backup && !allowed(job.backup))) throw new Error('Job or printer is not allowed in this bridge configuration.');
     const bytes = encodeEscPos(job.document);
     const hash = createHash('sha256').update(JSON.stringify({ printer: job.printer, backup: job.backup, document: job.document })).digest('hex');
     if (journal[job.id]) {

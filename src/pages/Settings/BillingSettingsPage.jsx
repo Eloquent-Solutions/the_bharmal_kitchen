@@ -1,10 +1,13 @@
+import { restaurantDoc as doc } from '../../firebase/restaurantDb';
 import { useEffect, useState } from 'react';
-import { doc, getDoc } from 'firebase/firestore';
+import { getDoc } from 'firebase/firestore';
 import toast from 'react-hot-toast';
 import { db, isDemoMode } from '../../firebase/config';
 import { cacheRestaurantSettings, getRestaurantSettings } from '../../services/dataService';
 import { saveSettingsCloud } from '../../services/settingsCloud';
 import LoadingButton from '../../components/LoadingButton';
+import { useRestaurant } from '../../tenancy/RestaurantProvider';
+import { restaurantDefaults } from '../../utils/settings';
 
 const emptySettings = {
   name: 'The Bharmals Kitchen', address: '', phone: '', email: '', gstin: '', fssai: '',
@@ -17,7 +20,8 @@ const textFields = [
 ];
 
 export default function BillingSettingsPage() {
-  const [settings, setSettings] = useState(emptySettings);
+  const restaurant = useRestaurant();
+  const [settings, setSettings] = useState(() => ({ ...emptySettings, ...restaurantDefaults(restaurant) }));
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -26,7 +30,7 @@ export default function BillingSettingsPage() {
     async function load() {
       try {
         const saved = isDemoMode ? getRestaurantSettings() : (await getDoc(doc(db, 'settings', 'restaurant'))).data();
-        if (active && saved) setSettings({ ...emptySettings, ...saved });
+        if (active && saved) setSettings({ ...emptySettings, ...restaurantDefaults(restaurant), ...saved });
       } catch (error) {
         if (active) toast.error(`Could not load billing settings: ${error.message}`);
       } finally {
@@ -35,7 +39,7 @@ export default function BillingSettingsPage() {
     }
     load();
     return () => { active = false; };
-  }, []);
+  }, [restaurant]);
 
   async function save(event) {
     event.preventDefault();

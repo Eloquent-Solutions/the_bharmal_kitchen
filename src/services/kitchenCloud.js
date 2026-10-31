@@ -1,4 +1,5 @@
-import { doc, runTransaction, serverTimestamp } from 'firebase/firestore';
+import { restaurantDoc as doc, restaurantTransaction as runTransaction } from '../firebase/restaurantDb';
+import { serverTimestamp } from 'firebase/firestore';
 import { db, isFinanceEnabled } from '../firebase/config';
 import { readRegisterContext, writeRegisterMutation } from './financeCloud';
 

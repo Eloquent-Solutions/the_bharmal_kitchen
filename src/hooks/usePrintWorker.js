@@ -1,5 +1,6 @@
+import { restaurantCollection as collection } from '../firebase/restaurantDb';
 import { useEffect } from 'react';
-import { collection, onSnapshot, query, where } from 'firebase/firestore';
+import { onSnapshot, query, where } from 'firebase/firestore';
 import { db, isBillingEnabled } from '../firebase/config';
 import { useAuth } from './useAuth';
 import { callBridge, getBridgeDevice } from '../services/printBridgeClient';

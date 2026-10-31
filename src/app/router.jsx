@@ -1,3 +1,5 @@
+import { isMultiRestaurant, isFinanceEnabled } from '../firebase/config';
+import { staffPath } from '../tenancy/paths';
 /**
  * Application Router
  * The Bharmals Kitchen — Restaurant Management System
@@ -138,6 +140,7 @@ function RootRoute() {
     ? <SuspenseWrap><CustomerTakeawayPage /></SuspenseWrap>
     : <Navigate to={isStaffOnly ? '/login' : '/order'} replace />;
   if (isCustomer) return <Navigate to={isStaffOnly && !isCustomerTakeawayEnabled ? '/access-pending' : { pathname: '/order', search }} replace />;
+  if (isMultiRestaurant) return <Navigate to="/admin" replace />;
   return <Navigate to={isInventoryOnly ? INVENTORY_HOME : '/dashboard'} replace />;
 }
 
@@ -312,8 +315,29 @@ const routes = [
   },
 ];
 
+
+function AdminHomeRoute() {
+  const { user, isCustomer, loading, role, isTabAllowed, signOut } = useAuth();
+  if (loading) return <PageLoader />;
+  if (!user) return <Navigate to={staffPath('/login')} replace />;
+  if (isCustomer) return <main className="loading-screen"><h2>Staff access required</h2><p>Ask this restaurant’s owner to assign your staff role.</p><button className="btn btn-secondary" onClick={signOut}>Sign out</button></main>;
+  const home = isFinanceEnabled && ['Owner', 'Admin', 'Manager', 'Accountant'].includes(role) && isTabAllowed('dashboard') ? '/dashboard' : role === 'Kitchen Staff' && isOperationsEnabled ? '/kitchen/kds' : INVENTORY_HOME;
+  return <Navigate to={staffPath(home)} replace />;
+}
+function LegacyStaffRedirect({ path }) {
+  const { search, hash } = useLocation();
+  return <Navigate to={{ pathname: staffPath(path), search, hash }} replace />;
+}
+const restaurantRoutes = isMultiRestaurant ? [
+  ...routes.flatMap((route) => route.children ? [
+    { ...route, children: route.children.map((child) => ({ ...child, path: staffPath(child.path) })) },
+    ...route.children.map((child) => ({ path: child.path, element: <LegacyStaffRedirect path={child.path} /> })),
+  ] : [route]),
+  { path: '/admin', element: <AdminHomeRoute /> },
+] : routes;
+
 export const router = createBrowserRouter([{
   element: <Outlet />,
   errorElement: <RouteErrorPage />,
-  children: routes,
+  children: restaurantRoutes,
 }]);

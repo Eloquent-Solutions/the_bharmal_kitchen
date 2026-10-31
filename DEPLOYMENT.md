@@ -4,6 +4,10 @@ The client release has staff inventory, supplier purchase bills, POS billing, ki
 
 The client view contains raw materials, stock ledger, wastage, stock count, utensils, suppliers, purchase bills, purchase orders, inventory valuation, POS, active orders, KDS/KOT, order history, menu dishes, categories, recipes, and owner user management. POS and menu setup are limited to Owner, Admin, and Manager accounts with assigned tabs. Signed-in customers can submit pickup requests at `/order`; staff validate price, recipe, and stock before confirming a bill. Finance, operational reports, and the finance-backed dashboard are enabled with `VITE_FINANCE_ENABLED=true`. The reviewed printing, settings, and recipe-draft screens are included in the billing release. Table service and staff HR remain deferred. These switches set the user-interface scope; Firestore rules enforce data access.
 
+## Restaurant isolation on the custom domain
+
+The TBK custom-domain release uses `VITE_MULTI_RESTAURANT=true` and `VITE_PLATFORM_DOMAIN=eloquentsolutions.in` in Vercel Production. The production build requires both flags. Staff enter at `/admin`, and former staff links redirect there. The old `the-bharmal-kitchen.vercel.app` host redirects to `https://tbk.eloquentsolutions.in`. Follow [TENANCY_PRODUCTION.md](TENANCY_PRODUCTION.md) for backups, the legacy access lock, verification and rollback. The original root data remains preserved but clients must use the restaurant namespace after cutover.
+
 ## 1. Create the production Firebase project
 
 1. In Firebase Console, create a new project for production and register a **Web app** in it.

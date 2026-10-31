@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:restaurant": "node scripts/dev-restaurant.mjs",
     "build": "vite build",
     "preview": "vite preview",
     "lint": "eslint .",
@@ -15,7 +16,9 @@
     "test:finance": "node --test tests/finance.test.mjs",
     "test:finance:cloud": "firebase emulators:exec --only firestore --project demo-tbk-finance 'node --test tests/finance.cloud.test.mjs'",
     "test:printing": "node --test tests/printing.test.mjs",
-    "test:settings:cloud": "firebase emulators:exec --only firestore --project demo-tbk-settings 'node --test tests/settings-printing.cloud.test.mjs'"
+    "test:settings:cloud": "firebase emulators:exec --only firestore --project demo-tbk-settings 'node --test tests/settings-printing.cloud.test.mjs'",
+    "test:tenancy": "node --test tests/tenancy.test.mjs",
+    "test:tenancy:cloud": "firebase emulators:exec --only firestore --project demo-tbk-tenancy 'node --test tests/tenancy.cloud.test.mjs'"
   },
   "dependencies": {
     "date-fns": "^4.1.0",

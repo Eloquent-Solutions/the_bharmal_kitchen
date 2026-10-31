@@ -1,5 +1,6 @@
+import { restaurantDoc as doc } from '../firebase/restaurantDb';
 import { useEffect, useState } from 'react';
-import { doc, onSnapshot } from 'firebase/firestore';
+import { onSnapshot } from 'firebase/firestore';
 import { db } from '../firebase/config';
 
 export default function useCloudDocument(collection, id) {

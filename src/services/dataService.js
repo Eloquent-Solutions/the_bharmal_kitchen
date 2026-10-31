@@ -1,3 +1,4 @@
+import { restaurantCollection as collection, restaurantDoc as doc } from '../firebase/restaurantDb';
 /**
  * Central Data & State Service
  * The Bharmals Kitchen — Restaurant Management System
@@ -8,18 +9,11 @@
  * Create, Read, Update, and Delete (CRUD).
  */
 
-import {
-  collection,
-  doc,
-  getDocs,
-  getDoc,
-  setDoc,
-  deleteDoc,
-  serverTimestamp,
-  onSnapshot,
-} from 'firebase/firestore';
-import { auth, db, isDemoMode, isInventoryOnly, isBillingEnabled, isOperationsEnabled } from '../firebase/config';
+import { getDocs, getDoc, setDoc, deleteDoc, serverTimestamp, onSnapshot } from 'firebase/firestore';
+import { auth, db, isDemoMode, isInventoryOnly, isBillingEnabled, isOperationsEnabled, isMultiRestaurant, restaurantRuntime } from '../firebase/config';
+import { restaurantCacheKey } from '../tenancy/identity';
 import { formatRecordId } from '../utils/recordIds';
+import { restaurantDefaults } from '../utils/settings';
 
 const inventoryId = (prefix) => `${prefix}-${crypto.randomUUID()}`;
 let inventorySyncState = { ready: false, error: null };
@@ -824,6 +818,7 @@ export const DEFAULT_LOYALTY_TIERS = [
 // ─── Storage & Firestore Synchronization Engine ──────────────
 
 function storageKey(key) {
+  if (isMultiRestaurant) return restaurantCacheKey({ projectId: db?.app?.options.projectId, restaurantId: restaurantRuntime.restaurantId, uid: auth?.currentUser?.uid }, key);
   return isInventoryOnly && !isDemoMode
     ? `tbk:${import.meta.env.VITE_FIREBASE_PROJECT_ID}:${auth?.currentUser?.uid || 'anonymous'}:${key}`
     : key;
@@ -2161,7 +2156,7 @@ export const DEFAULT_RESTAURANT_SETTINGS = {
 };
 
 export function getRestaurantSettings() {
-  return getStored('tbk_restaurant_settings', DEFAULT_RESTAURANT_SETTINGS);
+  return getStored('tbk_restaurant_settings', isMultiRestaurant ? restaurantDefaults({ mode: 'restaurant' }) : DEFAULT_RESTAURANT_SETTINGS);
 }
 
 export function saveRestaurantSettings(settings) {

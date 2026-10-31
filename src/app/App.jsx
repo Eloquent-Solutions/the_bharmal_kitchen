@@ -6,11 +6,12 @@
 import { RouterProvider } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import { AuthProvider } from '../hooks/useAuth';
+import RestaurantProvider from '../tenancy/RestaurantProvider';
 import { router } from './router';
 
 export default function App() {
   return (
-    <AuthProvider>
+    <RestaurantProvider><AuthProvider>
       <RouterProvider router={router} />
       <Toaster
         position="top-right"
@@ -32,6 +33,6 @@ export default function App() {
           },
         }}
       />
-    </AuthProvider>
+    </AuthProvider></RestaurantProvider>
   );
 }

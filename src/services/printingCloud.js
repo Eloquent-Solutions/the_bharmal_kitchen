@@ -1,4 +1,5 @@
-import { doc, getDocFromServer, runTransaction, serverTimestamp, Timestamp } from 'firebase/firestore';
+import { restaurantDoc as doc, restaurantTransaction as runTransaction } from '../firebase/restaurantDb';
+import { getDocFromServer, serverTimestamp, Timestamp } from 'firebase/firestore';
 import { auth, db } from '../firebase/config';
 import { auditWrite } from './settingsCloud';
 import { normalizeReceiptTemplate, kitchenDocument, receiptDocument } from '../utils/printDocument';

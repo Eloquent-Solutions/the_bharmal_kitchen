@@ -1,4 +1,5 @@
-import { collection, getDocs, doc, runTransaction, serverTimestamp } from 'firebase/firestore';
+import { restaurantCollection as collection, restaurantDoc as doc, restaurantTransaction as runTransaction } from '../firebase/restaurantDb';
+import { getDocs, serverTimestamp } from 'firebase/firestore';
 import { auth, db } from '../firebase/config';
 import { auditWrite } from './settingsCloud';
 import { draftCost } from '../utils/recipeDrafts';

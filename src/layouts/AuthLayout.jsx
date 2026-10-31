@@ -5,10 +5,12 @@
 
 import { Outlet, Navigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
-import { isStaffOnly, isCustomerTakeawayEnabled } from '../firebase/config';
+import { isStaffOnly, isCustomerTakeawayEnabled, isMultiRestaurant } from '../firebase/config';
 import './AuthLayout.css';
+import { useRestaurant } from '../tenancy/RestaurantProvider';
 
 export default function AuthLayout() {
+  const restaurant = useRestaurant();
   const { user, isCustomer, loading } = useAuth();
 
   if (loading) {
@@ -21,7 +23,7 @@ export default function AuthLayout() {
 
   // If already authenticated, redirect to dashboard
   if (user) {
-    return <Navigate to={isCustomer ? (isStaffOnly && !isCustomerTakeawayEnabled ? '/access-pending' : '/order') : '/dashboard'} replace />;
+    return <Navigate to={isCustomer ? (isStaffOnly && !isCustomerTakeawayEnabled ? '/access-pending' : '/order') : isMultiRestaurant ? '/admin' : '/dashboard'} replace />;
   }
 
   return (
@@ -30,16 +32,16 @@ export default function AuthLayout() {
       <div className="auth-container">
         <div className="auth-brand">
           <div className="auth-logo">
-            <span>TBK</span>
+            <span>{restaurant.mark}</span>
           </div>
-          <h1 className="auth-title">The Bharmals Kitchen</h1>
+          <h1 className="auth-title">{restaurant.name}</h1>
           <p className="auth-subtitle">Restaurant Management System</p>
         </div>
         <div className="auth-card glass-card-static">
           <Outlet />
         </div>
         <p className="auth-footer">
-          © {new Date().getFullYear()} The Bharmals Kitchen. All rights reserved.
+          © {new Date().getFullYear()} {restaurant.name}. All rights reserved.
         </p>
       </div>
     </div>

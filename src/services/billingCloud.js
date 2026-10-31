@@ -1,4 +1,5 @@
-import { collection, doc, getDocs, runTransaction, serverTimestamp } from 'firebase/firestore';
+import { restaurantCollection as collection, restaurantDoc as doc, restaurantTransaction as runTransaction, restaurantIdFor } from '../firebase/restaurantDb';
+import { getDocs, serverTimestamp } from 'firebase/firestore';
 import { auth, db, isFinanceEnabled } from '../firebase/config';
 import { calculateOrderTotals } from '../utils/calculations';
 import { isValidPickupPhone } from '../utils/phone';
@@ -101,6 +102,7 @@ export async function placePosOrderCloud(input, database = db) {
       }, 0));
     });
     const settings = settingsSnapshot.exists() ? settingsSnapshot.data() : {};
+    if (restaurantIdFor(database) && !settings.name?.trim()) throw new Error('Save this restaurant’s billing details before creating a bill.');
     const pos = posSnapshot.data() || {};
     if (pos.requireCustomerPhone && !isValidPickupPhone(input.phone || '')) throw new Error('A valid customer phone number is required by POS settings.');
     const totals = calculateOrderTotals(billedItems, {

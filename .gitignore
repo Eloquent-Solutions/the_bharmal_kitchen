@@ -27,3 +27,6 @@ dist-ssr
 .env
 .env.production
 .env.local
+
+# Private database snapshots, migration plans, and deployment rollback files
+/.local-backups/
